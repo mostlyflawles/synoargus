@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (build 6) – 2026-11-09
+- Fixed (important): *Create rule* overwrote an existing Action Rule (Surveillance Station uses `ruleId`, which was copied from the template). New rules are now built from scratch: motion detected on the camera → webhook to SynoArgus, all week. Safety check: exactly one new rule, no existing rule changed.
+- *Fix the rule* for SynoArgus rules not triggered by motion on the right camera.
+- Created rules are remembered and shown even when the rules cannot be read.
+- Clear messages for missing permissions: Administrator for Action Rules, All-Object Manager for motion detection.
+- Raw data box wraps and has a copy button.
+- Fixed: own models were labelled "built-in". Model list shows a hint per model (fast / balanced / accurate).
+- Update instructions: stop the project first, then Build, then *Remove Unused Images*.
+- docker-compose.yml: enabling the converter = delete the first character on each line (indentation stays correct).
+
 ## 0.4.1 (build 5) – 2026-11-09
 - Fixed: motion detection tuning showed NaN – Surveillance Station returns values as objects (`{"value": 95, "minValue": 1, …}`).
 - Saving sensitivity/threshold now sends all other motion settings (detection region etc.) back unchanged, respects min/max and verifies the result.

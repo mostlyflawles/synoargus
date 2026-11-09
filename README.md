@@ -129,13 +129,15 @@ Do this **for each camera**:
 
 **Automatic (experimental):** under each camera SynoArgus shows whether a matching Action Rule exists.
 
-- **Create rule** copies an existing Action Rule that has a webhook action (for any camera) and adapts it:
-  name `SynoArgus - <camera>`, event source = the camera, webhook URL = SynoArgus. So create **one** rule by hand
-  (below) first; the rest can be created with the button. Check the result in Surveillance Station.
-- **Update the address** fixes existing SynoArgus rules that point to an old address or token
-  (e.g. after a fresh install).
-- The SynoArgus DSM user needs permission to manage Action Rules in Surveillance Station.
-- If something fails, *Show raw data from Surveillance Station* shows what the NAS returned – useful in an issue.
+- **Create rule** creates a new rule `SynoArgus - <camera>`: event *Motion detected* on the camera, action webhook (GET)
+  to SynoArgus, schedule all week. SynoArgus checks afterwards that exactly one new rule was added and that no
+  existing rule changed. The time of creation is remembered and shown even if the rules cannot be read later.
+- **Update the address** fixes SynoArgus rules that point to an old address or token (e.g. after a fresh install).
+- **Fix the rule** appears if a SynoArgus rule is not triggered by motion on that camera.
+- Reading and creating rules requires the **Administrator** profile in Surveillance Station for the SynoArgus user.
+  You can enable it temporarily, create/update the rules and switch back – the rules keep working.
+- If something fails, *Show raw data from Surveillance Station* (with a copy button) shows what the NAS returned –
+  useful in an issue.
 
 **Manual:**
 
@@ -181,7 +183,8 @@ flashes every time Surveillance Station triggers SynoArgus and shows triggers pe
 - **Threshold** (1–99): how large a share of the detection area must change. Lower = smaller areas trigger.
 
 This uses the Surveillance Station Web API (`SYNO.SurveillanceStation.Camera.Event`). It only works when the camera's detection
-source is *By Surveillance Station*, and the SynoArgus DSM user needs permission to change camera settings.
+source is *By Surveillance Station*, and the SynoArgus DSM user needs the **All-Object Manager** (or Administrator)
+profile. All other motion settings (detection area etc.) are sent back unchanged.
 
 ## 6. Notifications
 
@@ -271,11 +274,15 @@ If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS c
 The built-in models are YOLOX tiny/s/m (Apache-2.0). You can add Ultralytics models such as **YOLO26** or **YOLO11**:
 
 1. Download the `.pt` files (e.g. `yolo26s.pt`) from Ultralytics and put them in `docker/synoargus/modeller`.
-2. In `docker-compose.yml`, remove the `#` in front of the `synoargus-converter` block.
-3. Container Manager > Project > synoargus > **Action** > **Build**.
-4. The converter (a large image with PyTorch, ~3 GB) runs once, converts new files to `data/models` and stops.
-   Conversion takes a few minutes per model; follow it in the container log.
-5. In SynoArgus: Settings > AI > Model – your models are listed as *own*. No restart needed.
+2. In `docker-compose.yml`, delete **only the first character (`#`)** on each of the 8 `synoargus-converter` lines
+   at the bottom. The indentation is then correct (YAML is sensitive to spaces).
+3. Container Manager > Project > synoargus > **Action** > **Stop**, then **Action** > **Build**.
+4. The converter (~3 GB image with PyTorch) starts, converts new files to `data/models` and stops by itself.
+   **Wait until `synoargus-converter` shows as stopped** in Container Manager (status *Exited*) – its log ends with
+   `Converted: …`. This takes a few minutes per model.
+5. Then choose the model in SynoArgus under Settings > AI – your models are listed as *own*. No restart needed.
+   Recommended on a Celeron J3455: an **s** model (e.g. `yolo26s`). Check the time with *Take snapshot and analyse*;
+   under ~1 s per image is good.
 
 To add more models later, put the files in `modeller` and start the `synoargus-converter` container again.
 You can comment the block out afterwards to save space (and delete the converter image).
@@ -286,8 +293,11 @@ You can comment the block out afterwards to save space (and delete the converter
 
 - SynoArgus checks GitHub for new versions once a day. A dot on **Status** means an update is available;
   you can also press *Check for update* there.
-- To update: Container Manager > **Project** > synoargus > **Action** > **Build**. With `pull_policy: always`
-  the newest image is pulled and the container is recreated. Settings, history and own models in `data` are kept.
+- To update: Container Manager > **Project** > synoargus > **Action** > **Stop**, then **Action** > **Build**.
+  With `pull_policy: always` the newest image is pulled and the container is recreated. Settings, history and own
+  models in `data` are kept.
+- Afterwards the previous image remains as `<none>` – that is normal Docker behaviour. Remove it with
+  Container Manager > **Image** > **Remove Unused Images**.
 - With Portainer: *Recreate* the container with *Re-pull image* enabled.
 
 ## 11. Backup and restore

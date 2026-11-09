@@ -18,16 +18,16 @@ services:
       # - SYNOARGUS_UNLOCK=1
     mem_limit: 1g
 
-  # ---------------------------------------------------------------------------
-  # Optional: own models (e.g. YOLO26). Remove the # on the lines below, put your
-  # .pt files in ./modeller and build the project. The converter runs once, converts
-  # new files to ./data/models and stops. Choose the model under Settings > AI.
-  # ---------------------------------------------------------------------------
-  # synoargus-converter:
-  #   image: ghcr.io/mostlyflawles/synoargus-converter:latest
-  #   pull_policy: always
-  #   container_name: synoargus-converter
-  #   restart: "no"
-  #   volumes:
-  #     - ./modeller:/in:ro
-  #     - ./data/models:/out
+# ---------------------------------------------------------------------------
+# Optional: own models (e.g. YOLO26). To enable, delete ONLY the first character (#)
+# on each of the 8 lines below, put your .pt files in ./modeller and build the project.
+# The converter runs once, converts new files to ./data/models and stops by itself.
+# ---------------------------------------------------------------------------
+#  synoargus-converter:
+#    image: ghcr.io/mostlyflawles/synoargus-converter:latest
+#    pull_policy: always
+#    container_name: synoargus-converter
+#    restart: "no"
+#    volumes:
+#      - ./modeller:/in:ro
+#      - ./data/models:/out

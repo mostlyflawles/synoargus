@@ -33,6 +33,10 @@ EN = {
     "Det finns redan en SynoArgus-regel för kameran": "There is already a SynoArgus rule for this camera",
     "Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.": "First create a rule with a webhook for any camera in Surveillance Station. It is used as a template.",
     "Surveillance Station tog emot anropet men regeln syns inte. Skapa den manuellt.": "Surveillance Station accepted the call but the rule does not show up. Create it manually.",
+    "Kontot behöver profilen Administrator i Surveillance Station för att läsa och skapa regler. Du kan slå på det tillfälligt, skapa eller uppdatera reglerna och sedan byta tillbaka – reglerna fortsätter att fungera.": "The account needs the Administrator profile in Surveillance Station to read and create rules. You can enable it temporarily, create or update the rules and then switch back – the rules keep working.",
+    "Kontot behöver profilen All-Object Manager (eller Administrator) i Surveillance Station för att läsa och ändra rörelsedetekteringen.": "The account needs the All-Object Manager (or Administrator) profile in Surveillance Station to read and change motion detection.",
+    "Varning: en befintlig regel försvann efter ändringen. Kontrollera Action Rules i Surveillance Station.": "Warning: an existing rule disappeared after the change. Check Action Rules in Surveillance Station.",
+    "Regeln skapades inte som en ny regel. Kontrollera Action Rules i Surveillance Station.": "The rule was not created as a new rule. Check Action Rules in Surveillance Station.",
     # synology
     "Fel användarnamn eller lösenord": "Wrong username or password",
     "Kontot är inaktiverat eller ett gästkonto": "The account is disabled or a guest account",

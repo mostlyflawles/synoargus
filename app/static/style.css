@@ -123,3 +123,5 @@ a { color: var(--accent); }
 label.btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
 .arbox { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .arbox details { flex-basis: 100%; }
+.rawbox { min-width: 0; max-width: 100%; }
+pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }

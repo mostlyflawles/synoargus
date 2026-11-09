@@ -114,6 +114,13 @@ const EN = {
   'Ingen regel för kameran i Surveillance Station.': 'No rule for this camera in Surveillance Station.', 'Skapa regel': 'Create rule',
   'Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.': 'First create a rule with a webhook for any camera in Surveillance Station. It is used as a template.',
   'Regeln skapades': 'The rule was created', 'Adressen uppdaterades': 'The address was updated',
+  'Regeln {n} skapades {d}': 'The rule {n} was created {d}', 'men kan inte bekräftas.': 'but cannot be confirmed.',
+  'Kopiera rådata': 'Copy raw data', 'Regeln {n} utlöses inte av rörelse för den här kameran.': 'The rule {n} is not triggered by motion for this camera.',
+  'Rätta regeln': 'Fix the rule', 'Regeln skapades men kan inte bekräftas': 'The rule was created but cannot be confirmed', 'Regeln uppdaterades': 'The rule was updated',
+  'Börja med en s-modell. Jämför med Ta bild och analysera under Kameror – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.': 'Start with an s model. Compare using Take snapshot and analyse under Cameras – under 1 s per image is good. Own models (e.g. YOLO26) are added with the converter, see the README.',
+  'snabbast, lägst träffsäkerhet': 'fastest, lowest accuracy', 'noggrannast, 2–3 ggr långsammare': 'most accurate, 2–3× slower', 'balanserad (rekommenderas)': 'balanced (recommended)',
+  'mycket tung för en NAS': 'very heavy for a NAS', 'egen modell': 'own model',
+  'Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Stoppa</b>, sedan <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen). Städa till sist under <b>Image</b> &gt; <b>Remove Unused Images</b>.': 'Update in Container Manager: <b>Project</b> &gt; synoargus &gt; <b>Action</b> &gt; <b>Stop</b>, then <b>Action</b> &gt; <b>Build</b> (pulls the new image). Finally clean up under <b>Image</b> &gt; <b>Remove Unused Images</b>.',
   // status
   'Hämtar…': 'Loading…', 'Modell <b>{m}</b> på <b>{d}</b> ({s} px)': 'Model <b>{m}</b> on <b>{d}</b> ({s} px)', 'grafikkretsen': 'the GPU', 'processorn': 'the CPU',
   ' · senaste analys {ms} ms': ' · last analysis {ms} ms', 'Tillgängliga modeller: {m}': 'Available models: {m}', 'inga': 'none',
@@ -578,21 +585,37 @@ function renderCamEditor(cam) {
     let r;
     try { r = await api(`/api/cameras/${enc}/actionrule`); }
     catch (e) { box.innerHTML = `<span class="err">${esc(t('Kunde inte läsa reglerna: {e}', { e: e.message }))}</span>`; return; }
-    const raw = `<details class="small"><summary class="muted">${t('Visa rådata från Surveillance Station')}</summary><pre class="notes">${esc(JSON.stringify(r.raw, null, 2))}</pre></details>`;
-    const ok = r.rules.filter(x => x.current), old = r.rules.filter(x => !x.current);
+    const storedTxt = r.stored ? t('Regeln {n} skapades {d}', { n: esc(r.stored.name), d: fmtTime(r.stored.created) }) : '';
+    if (r.error) {
+      box.className = 'arbox small';
+      box.innerHTML = (storedTxt ? `<span>${storedTxt}${r.stored.confirmed ? '' : ' – ' + t('men kan inte bekräftas.')}</span><br>` : '') + `<span class="err">${esc(r.error)}</span>`;
+      return;
+    }
+    const rawId = 'arRaw' + Math.random().toString(36).slice(2, 8);
+    const raw = `<details class="small rawbox"><summary class="muted">${t('Visa rådata från Surveillance Station')}</summary>
+      <div class="row" style="margin:6px 0"><button type="button" class="btn" data-copy="${rawId}">${t('Kopiera rådata')}</button></div>
+      <pre class="notes raw" id="${rawId}">${esc(JSON.stringify(r.raw, null, 2))}</pre></details>`;
+    const good = r.rules.filter(x => x.current && x.event_ok);
+    const badEvt = r.rules.filter(x => !x.event_ok);
+    const oldUrl = r.rules.filter(x => !x.current && x.event_ok);
     const st = x => x.enabled === false || x.enabled === 0 ? ` <span class="tag">${t('avstängd')}</span>` : '';
     let html = '';
-    if (ok.length) html = `<span class="okc">✓ ${t('Regel finns i Surveillance Station: {n}', { n: esc(ok.map(x => x.name).join(', ')) })}</span>${ok.map(st).join('')}`;
-    else if (old.length) html = `<span class="err">${t('Regeln {n} pekar på en gammal adress.', { n: esc(old.map(x => x.name).join(', ')) })}</span> <button class="btn" id="arUpdate">${t('Uppdatera adressen')}</button>`;
-    else html = `<span>${t('Ingen regel för kameran i Surveillance Station.')}</span> <button class="btn" id="arCreate">${t('Skapa regel')}</button>${r.template ? '' : `<br><span class="muted">${t('Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.')}</span>`}`;
+    if (badEvt.length) html = `<span class="err">${t('Regeln {n} utlöses inte av rörelse för den här kameran.', { n: esc(badEvt.map(x => x.name).join(', ')) })}</span> <button class="btn" id="arFix">${t('Rätta regeln')}</button>`;
+    else if (good.length) html = `<span class="okc">✓ ${t('Regel finns i Surveillance Station: {n}', { n: esc(good.map(x => x.name).join(', ')) })}</span>${good.map(st).join('')}`;
+    else if (oldUrl.length) html = `<span class="err">${t('Regeln {n} pekar på en gammal adress.', { n: esc(oldUrl.map(x => x.name).join(', ')) })}</span> <button class="btn" id="arUpdate">${t('Uppdatera adressen')}</button>`;
+    else html = `<span>${t('Ingen regel för kameran i Surveillance Station.')}</span> <button class="btn" id="arCreate">${t('Skapa regel')}</button>`;
     box.className = 'arbox small'; box.innerHTML = html + raw;
     const run = async (action, btn) => {
       btn.disabled = true;
-      try { await api(`/api/cameras/${enc}/actionrule`, { method: 'POST', body: { action } }); toast(action === 'create' ? t('Regeln skapades') : t('Adressen uppdaterades')); }
-      catch (e) { toast(e.message, true); }
+      try {
+        const res = await api(`/api/cameras/${enc}/actionrule`, { method: 'POST', body: { action } });
+        if (action === 'create') toast(res.confirmed ? t('Regeln skapades') : t('Regeln skapades men kan inte bekräftas'));
+        else toast(t('Regeln uppdaterades'));
+      } catch (e) { toast(e.message, true); }
       loadAr();
     };
     $('#arUpdate') && ($('#arUpdate').onclick = e => run('update', e.target));
+    $('#arFix') && ($('#arFix').onclick = e => run('fix', e.target));
     $('#arCreate') && ($('#arCreate').onclick = e => run('create', e.target));
   };
   loadAr();
@@ -826,6 +849,14 @@ function fieldsFor(n) {
 }
 
 /* ---------------------------------------------------------------- inställningar */
+function modelHint(name) {
+  const n = name.toLowerCase();
+  if (/(tiny|nano|[^a-z]n$|\dn$)/.test(n)) return t('snabbast, lägst träffsäkerhet');
+  if (/(\dm$|_m$|medium)/.test(n)) return t('noggrannast, 2–3 ggr långsammare');
+  if (/(\ds$|_s$|small)/.test(n)) return t('balanserad (rekommenderas)');
+  if (/(\dl$|_l$|\dx$|_x$)/.test(n)) return t('mycket tung för en NAS');
+  return t('egen modell');
+}
 function renderSettings() {
   const c = S.cfg; const sso = c.auth.sso;
   const cams = Object.keys(c.cameras || {});
@@ -850,7 +881,7 @@ function renderSettings() {
   </div></div>
 
   <div class="panel"><h3>${t('AI')}</h3><div class="grid">
-    <label class="f">${t('Modell')}<select name="det.model">${models.map(m => `<option value="${esc(m.name)}" ${c.detector.model === m.name ? 'selected' : ''}>${esc(m.name)} (${m.source === 'user' ? t('egen') : t('inbyggd')})</option>`).join('')}</select><span class="hint">${t('Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.')}</span></label>
+    <label class="f">${t('Modell')}<select name="det.model">${models.map(m => `<option value="${esc(m.name)}" ${c.detector.model === m.name ? 'selected' : ''}>${esc(m.name)} – ${modelHint(m.name)} (${m.source === 'user' ? t('egen') : t('inbyggd')})</option>`).join('')}</select><span class="hint">${t('Börja med en s-modell. Jämför med Ta bild och analysera under Kameror – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.')}</span></label>
     <label class="f">${t('Beräkning')}<select name="det.device">${[['AUTO', t('Automatiskt (grafikkrets om den finns)')], ['GPU', t('Grafikkrets')], ['CPU', t('Processor')]].map(([v, l]) => `<option value="${v}" ${c.detector.device === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
   </div></div>
 
@@ -960,7 +991,7 @@ function updateHtml(u) {
     <p class="small">${t('Din version: {v}', { v: esc(u.current) })}${u.latest ? ' · ' + t('Senaste version: {v}', { v: esc(u.latest) }) : ''}</p>
     ${u.error ? `<p class="err small">${esc(t('Kunde inte kontrollera: {e}', { e: u.error }))}</p>` : u.newer ? `
       <p><b class="okc">${t('Ny version finns!')}</b> ${u.url ? `<a href="${esc(u.url)}" target="_blank" rel="noopener">${t('Vad är nytt')} ↗</a>` : ''}</p>
-      <p class="small">${t('Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen).')}</p>
+      <p class="small">${t('Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Stoppa</b>, sedan <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen). Städa till sist under <b>Image</b> &gt; <b>Remove Unused Images</b>.')}</p>
       ${u.notes ? `<details><summary class="small">${t('Vad är nytt')}</summary><pre class="notes">${esc(u.notes)}</pre></details>` : ''}`
       : u.latest ? `<p class="small muted">${t('Du har senaste versionen.')}</p>` : ''}`;
 }

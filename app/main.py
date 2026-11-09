@@ -628,7 +628,7 @@ async def motion_get(name: str, request: Request):
     try:
         raw = await ss.motion_get(await _ss_id(cam))
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise _ss_err(e, "motion")
     p = find_md_params(raw)
     if p is None:
         return {"supported": False, "raw": raw}
@@ -679,7 +679,7 @@ async def motion_put(name: str, request: Request, body: dict = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise _ss_err(e, "motion")
     got_s, got_t = _val(after.get("sensitivity")), _val(after.get("threshold"))
     if got_s != params["sensitivity"] or got_t != params["threshold"]:
         raise err(502, "Surveillance Station sparade inte värdena (har nu {s}/{t})", s=got_s, t=got_t)
@@ -732,14 +732,70 @@ def _trigger_url(request, name):
     return f"{base}/api/trigger/{quote(name, safe='')}?token={quote(config.get('trigger_token'), safe='')}"
 
 
-def _rule_summary(rule, name, url):
+MOTION_EVENT = {"evtSrc": 0, "evtId": 5}  # källa kamera, händelse "rörelse upptäckt"
+ID_KEYS = ("ruleId", "multiRuleId", "id")
+
+
+def _rule_events(rule):
+    ev = rule.get("events") or []
+    if isinstance(ev, str):
+        try:
+            ev = json.loads(ev)
+        except ValueError:
+            ev = []
+    return ev if isinstance(ev, list) else []
+
+
+def _rule_summary(rule, name, url, cam_id=None):
     from urllib.parse import quote
     urls = [s for s in _strings(rule) if s.startswith("http") and "/api/trigger/" in s]
     marker = [f"/api/trigger/{quote(name, safe='')}?", f"/api/trigger/{name}?"]
     mine = [u for u in urls if any(m in u for m in marker)]
-    enabled = rule.get("enabled", rule.get("isEnabled", rule.get("status")))
-    return {"id": rule.get("id"), "name": rule.get("name"), "enabled": enabled, "urls": mine,
-            "current": url in mine} if mine else None
+    if not mine:
+        return None
+    event_ok = any(e.get("evtSrc") == 0 and e.get("evtId") == 5 and
+                   (cam_id is None or str(e.get("evtDevId")) == str(cam_id)) for e in _rule_events(rule))
+    return {"id": rule.get("ruleId", rule.get("id")), "name": rule.get("name"), "enabled": rule.get("enabled"),
+            "urls": mine, "current": url in mine, "event_ok": event_ok}
+
+
+def _motion_events(name, cam_id):
+    return [{"evtAttribute": 0, "evtDevEnable": True, "evtDevId": cam_id, "evtDevIds": str(cam_id),
+             "evtDevName": name, "evtDevices": [{"devEnable": True, "devId": cam_id}], "evtDsId": 0,
+             "evtId": 5, "evtItem": -1, "evtSrc": 0, "evtStatus": 1, "evtTrig": 1,
+             "evtWebhookMethod": 1, "evtWebhookToken": ""}]
+
+
+def _new_rule(name, cam_id, url):
+    """Ny regel i det format Surveillance Station själv använder (utan id-fält = ny regel)."""
+    action = {"actDevEnable": False, "actDevId": -1, "actDevIds": "0", "actDevName": "", "actDevices": {},
+              "actDsId": 0, "actId": -1, "actItem": {"id": -1, "name": ""}, "actItemList": None,
+              "actRetItem": {"id": -2, "name": ""}, "actRetPos": -2, "actSrc": 1, "actTimeDur": 10,
+              "actTimeUnit": 1, "actTimes": 1, "blCondition": False, "bmkComment": "", "bmkLock": False,
+              "bmkName": "", "bmkShowOsd": False, "conditionUnit": 0, "conditionValue": "", "enabled": True,
+              "extUrl": url, "headers": "", "hostAccessUrl": "", "httpBody": "", "httpContentType": 0,
+              "iftttEvent": "", "iftttKey": "", "param1": "", "param2": "", "param3": "", "password": "",
+              "userName": "", "webhookReqMethod": 0}
+    return {"name": f"SynoArgus - {name}", "ruleType": 0, "actType": 0, "evtMinIntvl": 10,
+            "multiEvtSetting": 0, "activeInHomeMode": False, "enabled": True, "urlSplit": False,
+            "actSchedule": "1" * 336, "events": _motion_events(name, cam_id), "actions": [action]}
+
+
+def _rule_ids(rules):
+    return {r.get("ruleId", r.get("id")) for r in rules}
+
+
+def _ss_err(e, what):
+    if isinstance(e, SynologyError) and e.code == 105:
+        if what == "rules":
+            return err(403, "Kontot behöver profilen Administrator i Surveillance Station för att läsa och skapa "
+                            "regler. Du kan slå på det tillfälligt, skapa eller uppdatera reglerna och sedan byta "
+                            "tillbaka – reglerna fortsätter att fungera.")
+        return err(403, "Kontot behöver profilen All-Object Manager (eller Administrator) i Surveillance Station "
+                        "för att läsa och ändra rörelsedetekteringen.")
+    if isinstance(e, HTTPException):
+        return e
+    return HTTPException(502, str(e))
 
 
 async def _rules():
@@ -747,67 +803,86 @@ async def _rules():
     return raw, find_rules(raw) or []
 
 
+def _remember_rule(name, info):
+    def apply(d):
+        if name in d["cameras"]:
+            d["cameras"][name]["action_rule"] = info
+    config.update(apply)
+
+
 @app.get("/api/cameras/{name}/actionrule")
 async def actionrule_get(name: str, request: Request):
     require(request)
-    cam_or_404(name)
+    cam = cam_or_404(name)
     url = _trigger_url(request, name)
+    stored = cam.get("action_rule")
     try:
+        cam_id = await _ss_id(cam)
         raw, rules = await _rules()
     except Exception as e:
-        raise HTTPException(502, str(e))
-    mine = [r for r in (_rule_summary(x, name, url) for x in rules) if r]
-    template = any(any(s.startswith("http") for s in _strings(x)) for x in rules)
-    return {"url": url, "rules": mine, "template": template, "count": len(rules), "raw": raw}
+        return {"url": url, "rules": [], "stored": stored, "error": _ss_err(e, "rules").detail, "raw": None}
+    mine = [r for r in (_rule_summary(x, name, url, cam_id) for x in rules) if r]
+    if stored and not stored.get("confirmed") and any(r["current"] for r in mine):
+        stored["confirmed"] = True
+        _remember_rule(name, stored)
+    return {"url": url, "rules": mine, "stored": stored, "count": len(rules), "raw": raw}
 
 
 @app.post("/api/cameras/{name}/actionrule")
 async def actionrule_post(name: str, request: Request, body: dict = Body(default={})):
-    """action=update: byt adress i befintliga SynoArgus-regler för kameran.
-    action=create: skapa en ny regel genom att kopiera en befintlig webhook-regel som mall."""
+    """create: ny regel (rörelse -> webhook till SynoArgus).
+    update: byt adress i befintliga SynoArgus-regler för kameran.
+    fix:    som update, och sätt händelsen till rörelse för rätt kamera."""
     require(request)
     cam = cam_or_404(name)
     url = _trigger_url(request, name)
     action = (body or {}).get("action", "create")
+    created = False
     try:
-        raw, rules = await _rules()
-        if action == "update":
+        cam_id = await _ss_id(cam)
+        _, rules = await _rules()
+        before = _rule_ids(rules)
+        if action in ("update", "fix"):
             changed = 0
             for rule in rules:
-                s = _rule_summary(rule, name, url)
-                if not s or s["current"]:
+                sm = _rule_summary(rule, name, url, cam_id)
+                if not sm or (sm["current"] and (sm["event_ok"] or action == "update")):
                     continue
-                new = _walk_strings(rule, lambda x: url if x in s["urls"] else x)
+                new = _walk_strings(rule, lambda x: url if x in sm["urls"] else x)
+                if action == "fix" and not sm["event_ok"]:
+                    new["events"] = _motion_events(name, cam_id)
+                    if not str(new.get("actSchedule", "1")).strip("1") == "":
+                        new["actSchedule"] = "1" * 336
                 await ss.action_rule_save(new)
                 changed += 1
             result = {"updated": changed}
         else:
-            if any(_rule_summary(r, name, url) for r in rules):
+            if any(_rule_summary(r, name, url, cam_id) for r in rules):
                 raise err(409, "Det finns redan en SynoArgus-regel för kameran")
-            # mall: helst en befintlig SynoArgus-regel, annars någon regel med en webhook-adress
-            cands = [r for r in rules if any(s.startswith("http") and "/api/trigger/" in s for s in _strings(r))] \
-                or [r for r in rules if any(s.startswith("http") for s in _strings(r))]
-            if not cands:
-                raise err(400, "Skapa först en regel med webhook för valfri kamera i Surveillance Station. "
-                               "Den används som mall.")
-            tpl = cands[0]
-            tpl_urls = [s for s in _strings(tpl) if s.startswith("http")]
-            new = _walk_strings(tpl, lambda x: url if x in tpl_urls else x)
-            new = {k: v for k, v in new.items() if k not in ("id", "status")}
-            new["name"] = f"SynoArgus - {name}"
-            cam_id = await _ss_id(cam)
-            new = _set_keys(new, ("evtDevId", "evtDev", "evtCamId"), cam_id)
-            await ss.action_rule_save(new)
+            await ss.action_rule_save(_new_rule(name, cam_id, url))
+            created = True
+            _remember_rule(name, {"name": f"SynoArgus - {name}", "created": time.time(), "confirmed": False})
             result = {"created": True}
-        _, rules = await _rules()
-        found = [r for r in (_rule_summary(x, name, url) for x in rules) if r and r["current"]]
+        try:
+            _, rules = await _rules()
+        except Exception:
+            return {"ok": True, **result, "confirmed": False}
+        after = _rule_ids(rules)
+        if not before <= after:
+            raise err(502, "Varning: en befintlig regel försvann efter ändringen. Kontrollera Action Rules "
+                           "i Surveillance Station.")
+        if created and len(after - before) != 1:
+            raise err(502, "Regeln skapades inte som en ny regel. Kontrollera Action Rules i Surveillance Station.")
+        found = [r for r in (_rule_summary(x, name, url, cam_id) for x in rules) if r and r["current"]]
         if not found:
             raise err(502, "Surveillance Station tog emot anropet men regeln syns inte. Skapa den manuellt.")
+        if created:
+            _remember_rule(name, {"name": f"SynoArgus - {name}", "created": time.time(), "confirmed": True})
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, str(e))
-    return {"ok": True, **result, "rules": found}
+        raise _ss_err(e, "rules")
+    return {"ok": True, **result, "confirmed": True, "rules": found}
 
 
 @app.get("/api/cameras/{name}/triggers")

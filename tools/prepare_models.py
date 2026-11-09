@@ -54,7 +54,7 @@ for name in MODELS:
     os.makedirs(target, exist_ok=True)
     ov.save_model(model, os.path.join(target, f"{name}.xml"), compress_to_fp16=True)
     with open(os.path.join(target, "synoargus.json"), "w") as f:
-        json.dump({"family": "yolox", "license": "Apache-2.0", "source": "Megvii-BaseDetection/YOLOX"}, f)
+        json.dump({"family": "yolox", "license": "Apache-2.0", "origin": "Megvii-BaseDetection/YOLOX"}, f)
     log(f"{name}: saved to {target}")
     done.append(name)
 

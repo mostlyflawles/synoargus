@@ -55,7 +55,7 @@ for pt in pts:
         shutil.rmtree(target, ignore_errors=True)
         shutil.copytree(path, target)
         with open(os.path.join(target, "synoargus.json"), "w") as f:
-            json.dump({"family": "ultralytics", "license": "AGPL-3.0", "source": os.path.basename(pt)}, f)
+            json.dump({"family": "ultralytics", "license": "AGPL-3.0", "origin": os.path.basename(pt)}, f)
         log(f"{name}: saved to {target}")
         done.append(name)
     except Exception as e:

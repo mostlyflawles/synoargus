@@ -45,6 +45,8 @@ def read_meta(path):
                 meta = json.load(f)
         except Exception:
             meta = {}
+    if "source" in meta:  # äldre infofiler: "source" betydde ursprung
+        meta["origin"] = meta.pop("source")
     if "family" not in meta:
         name = os.path.basename(path).lower()
         if name.startswith("yolox"):
@@ -61,7 +63,7 @@ def available_models(*dirs):
         for d in sorted(glob.glob(os.path.join(base, "*"))):
             if os.path.isdir(d) and glob.glob(os.path.join(d, "*.xml")):
                 meta = read_meta(d)
-                found[os.path.basename(d)] = {"path": d, "source": "builtin" if i == 0 else "user", **meta}
+                found[os.path.basename(d)] = {**meta, "path": d, "source": "builtin" if i == 0 else "user"}
     return found
 
 

@@ -18,8 +18,8 @@ EN = {
     "Du ({me}) måste finnas med bland tillåtna konton": "You ({me}) must be in the list of allowed accounts",
     "Minst ett inloggningssätt måste vara på": "At least one login method must be enabled",
     "Sparat, men modellen kunde inte laddas: {e}": "Saved, but the model could not be loaded: {e}",
-    "Okänd typ av notifierare": "Unknown notifier type",
-    "Spara notifieraren först": "Save the notifier first",
+    "Okänd typ av notifiering": "Unknown notification type",
+    "Spara notifieringen först": "Save the notification first",
     "Inget skickades": "Nothing was sent",
     "Bilden finns inte": "Image not found",
     "Okänd kamera": "Unknown camera",
@@ -63,7 +63,7 @@ EN = {
     "Kunde inte nå DSM på {url}: {e}": "Could not reach DSM at {url}: {e}",
     "{text} (DSM-kod {code})": "{text} (DSM code {code})",
     # logg
-    "Okänd kamera (lägg till den under Kameror)": "Unknown camera (add it under Cameras)",
+    "Okänd kamera (lägg till den under Inställningar > Kameror)": "Unknown camera (add it under Settings > Cameras)",
     "Inget av intresse ({ms} ms)": "Nothing of interest ({ms} ms)",
     "Larm: {types}": "Alarm: {types}",
     "Fel: {e}": "Error: {e}",
@@ -77,6 +77,11 @@ EN = {
     "Okänt läge": "Unknown mode",
     "Ingen färdig kalibrering": "No finished calibration", "Ingen kalibrering pågår": "No calibration is running", "Inget förslag": "No proposal",
     "Okänd åtgärd": "Unknown action", "En kalibrering pågår redan": "A calibration is already running",
+    "En kalibrering pågår redan på {cam}. Stoppa den eller vänta tills den är klar.":
+        "A calibration is already running on {cam}. Stop it or wait until it has finished.",
+    "Rörelse: i kö (kalibrering pågår)": "Motion: queued (calibration running)",
+    "Home Mode {s} – väntar på schemat": "Home Mode {s} – waiting for the schedule",
+    "på": "on", "av": "off",
 }
 
 

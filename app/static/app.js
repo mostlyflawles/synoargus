@@ -6,13 +6,16 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const main = $('#main');
-let S = { state: null, cfg: null, types: null, models: [], triggerBase: '', tab: 'events', cam: null, lang: 'sv', update: null };
+let S = { state: null, cfg: null, types: null, models: [], triggerBase: '', tab: 'events', sub: 'cameras', cam: null, lang: 'sv', update: null, dirty: null, prio: 0 };
+try { const v = localStorage.getItem('synoargus.sub'); if (['cameras', 'notifiers', 'modes', 'other'].includes(v)) S.sub = v; } catch (e) { /* */ }
 const stoppers = new Set();  // livebild, rörelsemätare m.m. som ska stoppas när man byter vy
 function stopAll() { stoppers.forEach(f => { try { f(); } catch (e) { /* */ } }); stoppers.clear(); }
 
 /* ---------------------------------------------------------------- språk */
 const EN = {
-  'Händelser': 'Events', 'Kameror': 'Cameras', 'Notifierare': 'Notifiers', 'Inställningar': 'Settings', 'Status': 'Status',
+  'Händelser': 'Events', 'Kameror': 'Cameras', 'Notifiering': 'Notifications', 'Inställningar': 'Settings', 'Status': 'Status', 'Guide': 'Guide', 'Övrigt': 'Other',
+  'Du har ändringar som inte är sparade. Lämna ändå?': 'You have unsaved changes. Leave anyway?',
+  'Kalibrerar – larm fördröjs {s} s': 'Calibrating – alarms delayed {s} s',
   'Logga ut': 'Log out', 'Laddar…': 'Loading…', 'Kan inte nå SynoArgus: {e}': 'Cannot reach SynoArgus: {e}',
   'Kopierat': 'Copied', 'Adressen är markerad – tryck Ctrl+C': 'The address is selected – press Ctrl+C', 'Kopiera': 'Copy',
   'Sparat': 'Saved', 'Spara': 'Save', 'Ta bort': 'Remove', 'Aktiv': 'Active', 'Namn': 'Name', 'Lösenord': 'Password',
@@ -24,7 +27,7 @@ const EN = {
   'Anslut till Surveillance Station. Använd ett eget konto för SynoArgus utan tvåstegsverifiering, med behörighet till Surveillance Station.': 'Connect to Surveillance Station. Use a dedicated account for SynoArgus without 2-step verification, with access to Surveillance Station.',
   'NAS-adress': 'NAS address', 'Användare för Surveillance Station': 'Surveillance Station user', 'Kontrollera HTTPS-certifikat': 'Verify HTTPS certificate',
   'Vem får logga in i SynoArgus?': 'Who may log in to SynoArgus?',
-  'Ange ditt eget DSM-konto. Det blir det enda kontot som får logga in (fler kan läggas till under Inställningar > Inloggning). Lämnar du fältet tomt blir tjänstekontot ovan det enda som får logga in.': 'Enter your own DSM account. It becomes the only account allowed to log in (more can be added under Settings > Login). If you leave it empty, the service account above becomes the only one allowed.',
+  'Ange ditt eget DSM-konto. Det blir det enda kontot som får logga in (fler kan läggas till under Inställningar > Övrigt > Inloggning). Lämnar du fältet tomt blir tjänstekontot ovan det enda som får logga in.': 'Enter your own DSM account. It becomes the only account allowed to log in (more can be added under Settings > Other > Login). If you leave it empty, the service account above becomes the only one allowed.',
   'Ditt DSM-konto': 'Your DSM account', 'Engångskod (om tvåstegsverifiering)': 'One-time code (if 2-step verification)',
   'Anslut och starta': 'Connect and start', 'Ansluter…': 'Connecting…', 'Klart! {n} kameror hittades.': 'Done! {n} cameras found.', 'Språk': 'Language',
   // inloggning
@@ -64,9 +67,9 @@ const EN = {
   'analyseras': 'analysing', 'larm': 'alarm', 'inget': 'nothing', 'fel': 'error', 'tyst period': 'quiet period', 'för tätt': 'too frequent', 'upptagen': 'busy', 'avstängd': 'disabled',
   'Kräver en Action Rule för kameran (se adressen överst).': 'Requires an Action Rule for the camera (see the address at the top).',
   // notifierare
-  'Lägg till': 'Add', 'Inga notifierare ännu.': 'No notifiers yet.', 'Bara för kameror (inga valda = alla)': 'Only for cameras (none selected = all)',
+  'Lägg till': 'Add', 'Inga notifieringar ännu.': 'No notifications yet.', 'Bara för kameror (inga valda = alla)': 'Only for cameras (none selected = all)',
   'Bara för typer (inga valda = alla)': 'Only for types (none selected = all)', 'Skicka test': 'Send test', 'Spara först': 'Save first', 'Testlarm skickat': 'Test alarm sent',
-  'Ta bort notifieraren?': 'Remove the notifier?', 'Spara innan du testar en ny notifierare.': 'Save before testing a new notifier.',
+  'Ta bort notifieringen?': 'Remove the notification?', 'Spara innan du testar en ny notifiering.': 'Save before testing a new notification.',
   'Access Token (från pushbullet.com > Settings)': 'Access Token (from pushbullet.com > Settings)', 'Enhets-id (tomt = alla enheter)': 'Device id (empty = all devices)',
   'Enhets-id är <b>inte</b> telefonens modellnamn. Gå till pushbullet.com &gt; <b>Devices</b> och klicka på enheten. Id:t är det som står efter <code>#devices/</code> i adressfältet.': 'The device id is <b>not</b> the phone model name. Go to pushbullet.com &gt; <b>Devices</b> and click the device. The id is what follows <code>#devices/</code> in the address bar.',
   'Rubrik (tomt = standard)': 'Title (empty = default)', 'Text (tomt = standard)': 'Text (empty = default)', 'Ämne (tomt = standard)': 'Subject (empty = default)',
@@ -102,7 +105,7 @@ const EN = {
   'Slå på': 'Turn on', 'Slå av': 'Turn off', 'Växla': 'Toggle', 'Visa läge': 'Show state', 'Kamera': 'Camera', 'Åtgärd': 'Action',
   'Säkerhetskopia': 'Backup', 'Exportera': 'Export', 'Importera': 'Import', 'Ta med lösenord och nycklar': 'Include passwords and keys',
   'Filen innehåller då lösenord i klartext. Förvara den säkert.': 'The file will then contain passwords in plain text. Keep it safe.',
-  'Importera inställningar? Alla nuvarande inställningar ersätts.': 'Import settings? All current settings will be replaced.', 'Importerat: {c} kameror, {n} notifierare': 'Imported: {c} cameras, {n} notifiers',
+  'Importera inställningar? Alla nuvarande inställningar ersätts.': 'Import settings? All current settings will be replaced.', 'Importerat: {c} kameror, {n} notifieringar': 'Imported: {c} cameras, {n} notifications',
   'Filen kunde inte läsas': 'The file could not be read',
   'Inloggning': 'Login', 'Logga in med DSM-konto': 'Log in with DSM account', 'Tillåtna DSM-konton (kommaseparerat, tomt = alla)': 'Allowed DSM accounts (comma separated, empty = all)',
   'Installera SSO Server i DSM, aktivera OIDC och lägg till SynoArgus som app med omdirigerings-URI nedan.': 'Install SSO Server in DSM, enable OIDC and add SynoArgus as an application with the redirect URI below.',
@@ -123,20 +126,27 @@ const EN = {
   'Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Stoppa</b>, sedan <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen). Städa till sist under <b>Image</b> &gt; <b>Remove Unused Images</b>.': 'Update in Container Manager: <b>Project</b> &gt; synoargus &gt; <b>Action</b> &gt; <b>Stop</b>, then <b>Action</b> &gt; <b>Build</b> (pulls the new image). Finally clean up under <b>Image</b> &gt; <b>Remove Unused Images</b>.',
   'Larmar i läge (inga valda = alla)': 'Alarms in mode (none selected = all)', 'Typer': 'Types', 'Bara i läge (inga valda = alla)': 'Only in mode (none selected = all)',
   'läge {m} – inget larm': 'mode {m} – no alarm', 'Läge': 'Mode', 'Läge: {m}': 'Mode: {m}', 'Hemma': 'Home', 'Natt': 'Night', 'Borta': 'Away',
-  'Filtret {t} matchar ingen av kamerorna {c} – de letar inte efter {t}. Den här notifieraren kommer aldrig att skicka något för dem.': 'The filter {t} matches none of the cameras {c} – they do not look for {t}. This notifier will never send anything for them.',
+  'Filtret {t} matchar ingen av kamerorna {c} – de letar inte efter {t}. Den här notifieringen kommer aldrig att skicka något för dem.': 'The filter {t} matches none of the cameras {c} – they do not look for {t}. This notification will never send anything for them.',
   'Filtret {t} gäller inte {c} – de letar inte efter {t}.': 'The filter {t} does not apply to {c} – they do not look for {t}.',
   'I läget {m} larmar ingen av kamerorna {c}.': 'In mode {m} none of the cameras {c} alarm.',
   'Senast ändrat: {d} ({s})': 'Last changed: {d} ({s})', 'manuellt': 'manually', 'schema': 'schedule', 'på': 'on', 'av': 'off', 'okänt': 'unknown',
-  'Lägen': 'Modes', 'Läget avgör vilka kameror som larmar och vilka notifierare som skickar (väljs under Kameror och Notifierare). Det senaste som ändrar läget gäller: manuellt, webhook, schema eller Home Mode.': 'The mode decides which cameras alarm and which notifiers send (chosen under Cameras and Notifiers). Whatever changes the mode last wins: manually, webhook, schedule or Home Mode.',
+  'Lägen': 'Modes', 'Läget avgör vilka kameror som larmar och vilka notifieringar som skickas (väljs under Kameror och Notifiering). Det senaste som ändrar läget gäller: manuellt, webhook, schema eller Home Mode.': 'The mode decides which cameras alarm and which notifications are sent (chosen under Cameras and Notifications). Whatever changes the mode last wins: manually, webhook, schedule or Home Mode.',
   'Nytt läge': 'New mode', '(ändra inte)': '(do not change)', 'Följ Home Mode i Surveillance Station': 'Follow Home Mode in Surveillance Station',
   'Byt läge när Home Mode slås på eller av': 'Change mode when Home Mode is turned on or off', 'Home Mode på →': 'Home Mode on →', 'Home Mode av →': 'Home Mode off →',
-  'Schema': 'Schedule', 'Byt läge vid en viss tid, t.ex. Natt 23:00 och Hemma 06:00.': 'Change mode at a certain time, e.g. Night 23:00 and Home 06:00.', 'Inget schema.': 'No schedule.',
+  'Schema': 'Schedule', 'Byt läge vid en viss tid, t.ex. Natt 01:00 och ↩ Följ Home Mode 06:00.': 'Change mode at a certain time, e.g. Night 01:00 and ↩ Follow Home Mode 06:00.',
+  '↩ Följ Home Mode': '↩ Follow Home Mode', '↩ Föregående läge': '↩ Previous mode',
+  'Från ett schemabyte till återgången väntar Home Mode-ändringar. ↩ Följ Home Mode går till det läge Home Mode anger just då (annars till läget före schemat), ↩ Föregående läge går tillbaka till läget före schemat. Ändrar du läget för hand eller via webhook gäller det direkt och väntan upphör.': 'From a schedule change until the return, Home Mode changes wait. ↩ Follow Home Mode goes to the mode Home Mode indicates right then (otherwise to the mode before the schedule), ↩ Previous mode goes back to the mode before the schedule. If you change the mode by hand or via webhook it applies immediately and the waiting ends.',
+  'Schemat håller läget – Home Mode väntar till återgången.': 'The schedule holds the mode – Home Mode waits until the return.', 'Inget schema.': 'No schedule.',
   'Ny tid': 'New time', 'Byt läge via webhook': 'Change mode via webhook', 'Spara lägen': 'Save modes',
   'Kalibrering': 'Calibration',
   'SynoArgus mäter under en period hur kameran beter sig och föreslår känslighet och tröskel. Var 30:e sekund tas två bilder med en sekunds mellanrum: SynoArgus mäter själv hur mycket som ändras i detekteringsområdet, och AI:n avgör om något av intresse syns. Varje reaktion från Surveillance Station loggas också. Inga bilder sparas, bara statistik. Larm fungerar som vanligt under tiden.': 'SynoArgus measures over a period how the camera behaves and proposes sensitivity and threshold. Every 30 seconds two images are taken one second apart: SynoArgus measures how much changes in the detection area, and the AI decides whether anything of interest is visible. Every reaction from Surveillance Station is logged too. No images are stored, only statistics. Alarms work as usual meanwhile.',
-  'Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus.': 'Run it during a normal day and walk past the camera 2–3 times (the I am walking past now button). An empty house only gives noise.',
+  'Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus. En kamera kalibreras åt gången.': 'Run it during a normal day and walk past the camera 2–3 times (the I am walking past now button). An empty house only gives noise. One camera is calibrated at a time.',
+  'Jag går förbi nu tar 3 bilder per sekund i 90 sekunder – gå genom bilden under tiden. Rörelsen mäts mellan bilder som ligger 1 sekund isär och AI:n analyserar så många bilder den hinner. Under de 90 sekunderna går kalibreringen före larm: larm från alla kameror kan komma upp till 90 sekunder sent.': 'I am walking past now takes 3 images per second for 90 seconds – walk through the picture meanwhile. Motion is measured between images 1 second apart and the AI analyses as many images as it can keep up with. During those 90 seconds the calibration goes before alarms: alarms from all cameras can arrive up to 90 seconds late.',
+  'Under 90 sekunder går kalibreringen före larm. Larm från alla kameror kan komma upp till 90 sekunder sent. Starta?': 'For 90 seconds the calibration goes before alarms. Alarms from all cameras can arrive up to 90 seconds late. Start?',
+  'En kalibrering pågår redan på {cam}. Stoppa den eller vänta tills den är klar.': 'A calibration is already running on {cam}. Stop it or wait until it has finished.',
+  'Gå förbi kameran nu – {s} s kvar · {f} bilder, {a} analyserade': 'Walk past the camera now – {s} s left · {f} images, {a} analysed',
   'Starta kalibrering': 'Start calibration', 'Pågår: {a} – {b}': 'Running: {a} – {b}', '(analysen är långsam – bildparen glesas ut)': '(analysis is slow – image pairs are spaced out)',
-  'Gå förbi kameran nu – mäter tätare i {s} s till': 'Walk past the camera now – measuring more often for {s} s', 'Jag går förbi nu': 'I am walking past now', 'Avbryt': 'Cancel',
+'Jag går förbi nu': 'I am walking past now', 'Avbryt': 'Cancel',
   'Preliminärt resultat hittills:': 'Preliminary result so far:', 'Klar': 'Finished', 'Avbruten': 'Cancelled',
   'För lite data – låt kalibreringen gå längre eller gå förbi kameran några gånger. Krävs: minst {r} reaktioner eller {n} bildpar, och {t} med mål i rörelse för ett fullständigt förslag.': 'Not enough data – let the calibration run longer or walk past the camera a few times. Required: at least {r} reactions or {n} image pairs, and {t} with a moving target for a full proposal.',
   'Inget förslag – värdena från Surveillance Station saknas.': 'No proposal – the values from Surveillance Station are missing.', 'Nuvarande värden ser bra ut – inget att ändra.': 'The current values look good – nothing to change.',
@@ -240,11 +250,12 @@ async function boot() {
   document.documentElement.lang = S.lang;
   translateChrome();
   if (S.state.logged_in) { await loadConfig(); checkUpdateBadge(); }
+  setPriority(S.state.priority?.until);
   render();
 }
 
 function translateChrome() {
-  $$('#nav button').forEach(b => { b.textContent = t(b.dataset.label); });
+  $$('#nav button, #subnav button').forEach(b => { b.textContent = t(b.dataset.label); });
   $('#logoutBtn').textContent = t('Logga ut');
   $('#viewerClose').textContent = t('Stäng');
 }
@@ -259,21 +270,58 @@ async function checkUpdateBadge() {
   $('#nav button[data-tab=status]').classList.toggle('badge', !!S.update?.newer);
 }
 
+/* ---------------------------------------------------------------- osparade ändringar */
+function isDirty() { try { return !!(S.dirty && S.dirty()); } catch (e) { return false; } }
+function confirmLeave() {
+  if (!isDirty()) return true;
+  if (!confirm(t('Du har ändringar som inte är sparade. Lämna ändå?'))) return false;
+  S.dirty = null; return true;
+}
+window.addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+function go(tab, sub) {
+  if (!confirmLeave()) return;
+  S.tab = tab;
+  if (sub) { S.sub = sub; try { localStorage.setItem('synoargus.sub', sub); } catch (e) { /* */ } }
+  render(); window.scrollTo(0, 0);
+}
+
+/* ---------------------------------------------------------------- "Jag går förbi nu" i headern */
+function setPriority(until) { S.prio = until || 0; tickPriority(); }
+function tickPriority() {
+  const pill = $('#prioPill'); if (!pill) return;
+  const left = Math.round(S.prio - Date.now() / 1000);
+  pill.hidden = !(S.state?.logged_in && left > 0);
+  if (left > 0) {
+    pill.innerHTML = `<span class="l">${esc(t('Kalibrerar – larm fördröjs {s} s', { s: left }))}</span><span class="s">⏳ ${left} s</span>`;
+    pill.title = t('Kalibrerar – larm fördröjs {s} s', { s: left });
+  }
+}
+setInterval(tickPriority, 1000);
+
+function placeSubnav() { const h = $('header.top'); if (h) $('#subnav').style.top = h.offsetHeight + 'px'; }
+window.addEventListener('resize', placeSubnav);
+
 function render() {
   stopAll();
+  S.dirty = null;
   const st = S.state;
   $('#nav').hidden = !st.logged_in;
+  $('#subnav').hidden = !(st.logged_in && st.setup_done && S.tab === 'settings');
+  placeSubnav();
   $('#who').hidden = !st.logged_in;
   if (st.logged_in) $('#whoName').textContent = st.user;
   updateModePill(st.logged_in ? (S.cfg?.mode || st.mode) : null);
   if (!st.setup_done) return renderSetup();
   if (!st.logged_in) return renderLogin();
   $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab));
-  ({ events: renderEvents, cameras: renderCameras, notifiers: renderNotifiers, settings: renderSettings, status: renderStatus })[S.tab]();
+  $$('#subnav button').forEach(b => b.classList.toggle('active', b.dataset.sub === S.sub));
+  if (S.tab === 'settings') return ({ cameras: renderCameras, notifiers: renderNotifiers, modes: renderModes, other: renderSettings })[S.sub]();
+  ({ events: renderEvents, status: renderStatus, guide: renderGuide })[S.tab]();
 }
 
-$$('#nav button').forEach(b => b.addEventListener('click', () => { S.tab = b.dataset.tab; render(); window.scrollTo(0, 0); }));
-$('#modePill').addEventListener('click', () => { S.tab = 'status'; render(); window.scrollTo(0, 0); });
+$$('#nav button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
+$$('#subnav button').forEach(b => b.addEventListener('click', () => go('settings', b.dataset.sub)));
+$('#modePill').addEventListener('click', () => go('status'));
 $('#logoutBtn').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); S.state.logged_in = false; render(); });
 
 function langSwitch() {
@@ -306,7 +354,7 @@ function renderSetup() {
       <label class="check"><input type="checkbox" name="verify_tls"> ${t('Kontrollera HTTPS-certifikat')}</label>
       <hr style="border:0;border-top:1px solid var(--line);width:100%">
       <p class="small" style="margin:0"><b>${t('Vem får logga in i SynoArgus?')}</b></p>
-      <p class="muted small" style="margin:0">${t('Ange ditt eget DSM-konto. Det blir det enda kontot som får logga in (fler kan läggas till under Inställningar > Inloggning). Lämnar du fältet tomt blir tjänstekontot ovan det enda som får logga in.')}</p>
+      <p class="muted small" style="margin:0">${t('Ange ditt eget DSM-konto. Det blir det enda kontot som får logga in (fler kan läggas till under Inställningar > Övrigt > Inloggning). Lämnar du fältet tomt blir tjänstekontot ovan det enda som får logga in.')}</p>
       <label class="f">${t('Ditt DSM-konto')}<input name="login_user" autocomplete="username"></label>
       <label class="f">${t('Lösenord')}<input name="login_password" type="password" autocomplete="current-password"></label>
       <label class="f">${t('Engångskod (om tvåstegsverifiering)')}<input name="login_otp" inputmode="numeric" autocomplete="one-time-code"></label>
@@ -324,7 +372,7 @@ function renderSetup() {
         synology: { url: f.get('url'), user: f.get('user'), password: f.get('password'), verify_tls: !!f.get('verify_tls') },
         login_user: f.get('login_user'), login_password: f.get('login_password'), login_otp: f.get('login_otp'), timezone: tz } });
       toast(t('Klart! {n} kameror hittades.', { n: r.cameras }));
-      S.tab = 'cameras';
+      S.tab = 'settings'; S.sub = 'cameras';
       await boot();
     } catch (err) { $('#setupMsg').textContent = err.message; $('#setupMsg').className = 'small err'; btn.disabled = false; }
   });
@@ -417,7 +465,7 @@ function renderCameras() {
   <div class="row" style="justify-content:space-between"><h2>${t('Kameror')}</h2><button class="btn" id="fetchCams">${t('Hämta från Surveillance Station')}</button></div>
   <div class="camlist">${names.map(n => `<button class="chip ${n === S.cam ? 'on' : ''}" data-cam="${esc(n)}">${esc(n)}${cams[n].enabled ? '' : ` (${t('av')})`}</button>`).join('') || `<span class="muted">${t('Inga kameror. Hämta dem från Surveillance Station.')}</span>`}</div>
   <div id="camEdit"></div>`;
-  $$('.camlist .chip').forEach(b => b.onclick = () => { S.cam = b.dataset.cam; render(); });
+  $$('.camlist .chip').forEach(b => b.onclick = () => { if (b.dataset.cam === S.cam || !confirmLeave()) return; S.cam = b.dataset.cam; render(); });
   $('#fetchCams').onclick = async () => {
     try {
       const { cameras } = await api('/api/ss/cameras');
@@ -697,15 +745,18 @@ function renderCamEditor(cam) {
   const loadCal = async () => {
     stopCal();
     const body = $('#calBody'); if (!body) return;
-    let r;
-    try { r = (await api(`/api/cameras/${enc}/calibration`)).run; }
+    let r, active;
+    try { ({ run: r, active } = await api(`/api/cameras/${enc}/calibration`)); }
     catch (e) { body.innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
+    if (!$('#calBody')) return;
     body.className = 'small';
-    body.innerHTML = calHtml(r);
+    body.innerHTML = calHtml(r, active, cam.name);
+    if (r?.walk) setPriority(r.walk.until);
     body.onclick = async e => {
       const a = e.target.dataset.cal; if (!a) return;
       if (a === 'stop' && !confirm(t('Avbryta kalibreringen? Rapporten byggs på det som hunnit samlas in.'))) return;
       if (a === 'apply' && !confirm(t('Spara de föreslagna värdena i Surveillance Station?'))) return;
+      if (a === 'walk' && !confirm(t('Under 90 sekunder går kalibreringen före larm. Larm från alla kameror kan komma upp till 90 sekunder sent. Starta?'))) return;
       e.target.disabled = true;
       try {
         await api(`/api/cameras/${enc}/calibration`, { method: 'POST', body: { action: a, hours: Number(($('#calHours') || {}).value || 24) } });
@@ -714,7 +765,7 @@ function renderCamEditor(cam) {
       } catch (err) { toast(err.message, true); }
       loadCal();
     };
-    if (r && r.status === 'running') calTimer = setTimeout(loadCal, 15000);
+    if (r && r.status === 'running') calTimer = setTimeout(loadCal, r.walk ? 2000 : 15000);
   };
   loadCal();
 
@@ -747,12 +798,15 @@ function renderCamEditor(cam) {
     })();
   };
 
+  let snap = JSON.stringify(collect());
+  S.dirty = () => !!$('#saveCam') && JSON.stringify(collect()) !== snap;
   $('#saveCam').onclick = async () => {
-    try { await api('/api/cameras/' + enc, { method: 'PUT', body: collect() }); await loadConfig(); toast(t('Sparat')); }
+    try { const body = collect(); await api('/api/cameras/' + enc, { method: 'PUT', body }); snap = JSON.stringify(body); await loadConfig(); toast(t('Sparat')); }
     catch (e) { toast(e.message, true); }
   };
   $('#delCam').onclick = async () => {
     if (!confirm(t('Ta bort {name} från SynoArgus? (Kameran i Surveillance Station påverkas inte.)', { name: cam.name }))) return;
+    S.dirty = null;
     await api('/api/cameras/' + enc, { method: 'DELETE' }); await loadConfig(); S.cam = null; render();
   };
 }
@@ -781,7 +835,7 @@ function notifierWarnings(n) {
   const out = [];
   for (const ty of n.types || []) {
     const miss = targets.filter(c => !(cams[c].types || []).includes(ty));
-    if (targets.length && miss.length === targets.length) out.push(t('Filtret {t} matchar ingen av kamerorna {c} – de letar inte efter {t}. Den här notifieraren kommer aldrig att skicka något för dem.', { t: tname(ty), c: miss.join(', ') }));
+    if (targets.length && miss.length === targets.length) out.push(t('Filtret {t} matchar ingen av kamerorna {c} – de letar inte efter {t}. Den här notifieringen kommer aldrig att skicka något för dem.', { t: tname(ty), c: miss.join(', ') }));
     else if (miss.length) out.push(t('Filtret {t} gäller inte {c} – de letar inte efter {t}.', { t: tname(ty), c: miss.join(', ') }));
   }
   for (const m of n.modes || []) {
@@ -793,23 +847,31 @@ function notifierWarnings(n) {
 
 /* ---------------------------------------------------------------- kalibrering */
 const pct = v => v == null ? '–' : Math.round(v * 100) + ' %';
-function calHtml(r) {
+function calHtml(r, active, camName) {
+  const busy = active && active !== camName;
+  if (!r || (busy && r.status !== 'running' && !r.report)) r = null;
+  const startRow = busy
+    ? `<p class="warnbox">⚠ ${esc(t('En kalibrering pågår redan på {cam}. Stoppa den eller vänta tills den är klar.', { cam: active }))}</p>
+       <div class="row"><button class="btn primary" disabled>${t('Starta kalibrering')}</button></div>`
+    : `<div class="row"><select id="calHours" style="width:auto">${[12, 24, 48, 72].map(h => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${h} h</option>`).join('')}</select>
+      <button class="btn primary" data-cal="start">${t('Starta kalibrering')}</button></div>`;
   if (!r) return `
     <p class="muted" style="margin-top:0">${t('SynoArgus mäter under en period hur kameran beter sig och föreslår känslighet och tröskel. Var 30:e sekund tas två bilder med en sekunds mellanrum: SynoArgus mäter själv hur mycket som ändras i detekteringsområdet, och AI:n avgör om något av intresse syns. Varje reaktion från Surveillance Station loggas också. Inga bilder sparas, bara statistik. Larm fungerar som vanligt under tiden.')}</p>
-    <p class="muted">${t('Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus.')}</p>
-    <div class="row"><select id="calHours" style="width:auto">${[12, 24, 48, 72].map(h => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${h} h</option>`).join('')}</select>
-      <button class="btn primary" data-cal="start">${t('Starta kalibrering')}</button></div>`;
+    <p class="muted">${t('Jag går förbi nu tar 3 bilder per sekund i 90 sekunder – gå genom bilden under tiden. Rörelsen mäts mellan bilder som ligger 1 sekund isär och AI:n analyserar så många bilder den hinner. Under de 90 sekunderna går kalibreringen före larm: larm från alla kameror kan komma upp till 90 sekunder sent.')}</p>
+    <p class="muted">${t('Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus. En kamera kalibreras åt gången.')}</p>
+    ${startRow}`;
   const rep = r.report || {};
   const now = Date.now() / 1000;
   let head = '';
   if (r.status === 'running') {
     const prog = Math.min(1, (now - r.started) / (r.ends - r.started));
-    const walking = r.walk_until && r.walk_until > now;
+    const walking = r.walk && r.walk.until > now;
     head = `
       <div class="progress"><div style="width:${Math.round(prog * 100)}%"></div></div>
       <p>${t('Pågår: {a} – {b}', { a: fmtTime(r.started), b: fmtTime(r.ends) })}${r.slow ? ` <span class="warn">${t('(analysen är långsam – bildparen glesas ut)')}</span>` : ''}</p>
-      <div class="row">${walking ? `<span class="tag ok">${t('Gå förbi kameran nu – mäter tätare i {s} s till', { s: Math.round(r.walk_until - now) })}</span>` : `<button class="btn" data-cal="walk">🚶 ${t('Jag går förbi nu')}</button>`}
+      <div class="row">${walking ? `<span class="tag ok">${t('Gå förbi kameran nu – {s} s kvar · {f} bilder, {a} analyserade', { s: Math.round(r.walk.until - now), f: r.walk.frames, a: r.walk.analysed })}</span>` : `<button class="btn" data-cal="walk">🚶 ${t('Jag går förbi nu')}</button>`}
         <button class="btn danger" data-cal="stop">${t('Avbryt')}</button></div>
+      <p class="muted" style="margin:6px 0 0">${t('Jag går förbi nu tar 3 bilder per sekund i 90 sekunder – gå genom bilden under tiden. Rörelsen mäts mellan bilder som ligger 1 sekund isär och AI:n analyserar så många bilder den hinner. Under de 90 sekunderna går kalibreringen före larm: larm från alla kameror kan komma upp till 90 sekunder sent.')}</p>
       <p class="muted" style="margin-bottom:4px">${t('Preliminärt resultat hittills:')}</p>`;
   } else {
     head = `<p><b>${r.status === 'done' ? t('Klar') : t('Avbruten')}</b> · ${fmtTime(r.started)} – ${fmtTime(rep.ends && rep.ends < now ? rep.ends : now)}</p>`;
@@ -848,7 +910,7 @@ function calHtml(r) {
     <div class="hbars">${bars}</div>
     <table class="small"><tr><th></th><th>${t('Bildpar')}</th><th>${t('Mål')}</th><th>${t('Reaktioner')}</th><th>${t('Brus')}</th></tr>${dn(t('Dag'), rep.day)}${dn(t('Natt'), rep.night)}</table>
     ${prop}
-    ${r.status !== 'running' ? `<div class="row" style="margin-top:10px"><button class="btn" data-cal="clear">${t('Ny kalibrering')}</button></div>` : ''}`;
+    ${r.status !== 'running' ? (busy ? startRow.replace('<div class="row">', '<div class="row" style="margin-top:10px">') : `<div class="row" style="margin-top:10px"><button class="btn" data-cal="clear">${t('Ny kalibrering')}</button></div>`) : ''}`;
 }
 
 /* ---------------------------------------------------------------- notifierare */
@@ -865,16 +927,18 @@ let NOTI = null;
 
 function renderNotifiers() {
   NOTI = JSON.parse(JSON.stringify(S.cfg.notifiers || []));
+  const snap = JSON.stringify(NOTI);
   drawNotifiers();
+  S.dirty = () => !!$('#saveN') && JSON.stringify(NOTI) !== snap;
 }
 
 function drawNotifiers() {
   const cams = Object.keys(S.cfg.cameras || {});
   const types = [...new Set([...S.types.common, ...Object.values(S.cfg.cameras || {}).flatMap(c => c.types)])];
   main.innerHTML = `
-  <div class="row" style="justify-content:space-between"><h2>${t('Notifierare')}</h2>
+  <div class="row" style="justify-content:space-between"><h2>${t('Notifiering')}</h2>
     <div class="row"><select id="newKind" style="width:auto">${Object.entries(KIND_NAMES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button class="btn" id="addN">${t('Lägg till')}</button></div></div>
-  ${NOTI.length ? '' : `<p class="muted">${t('Inga notifierare ännu.')}</p>`}
+  ${NOTI.length ? '' : `<p class="muted">${t('Inga notifieringar ännu.')}</p>`}
   ${NOTI.map((n, i) => `
   <div class="panel" data-i="${i}">
     <div class="row" style="justify-content:space-between"><h3>${KIND_NAMES[n.type]}${n.name ? ': ' + esc(n.name) : ''}</h3>
@@ -892,7 +956,7 @@ function drawNotifiers() {
     </div>
     <div class="row" style="margin-top:12px"><button class="btn" data-act="test">${t('Skicka test')}</button><button class="btn danger" data-act="del">${t('Ta bort')}</button></div>
   </div>`).join('')}
-  <div class="row"><button class="btn primary" id="saveN">${t('Spara')}</button><span class="muted small">${t('Spara innan du testar en ny notifierare.')}</span></div>`;
+  <div class="row"><button class="btn primary" id="saveN">${t('Spara')}</button><span class="muted small">${t('Spara innan du testar en ny notifiering.')}</span></div>`;
 
   $('#addN').onclick = () => {
     const k = $('#newKind').value;
@@ -929,7 +993,7 @@ function drawNotifiers() {
         el.classList.toggle('on');
         const w = p.querySelector('.nwarn'); if (w) w.innerHTML = notifierWarnings(n);
       } else if (el.dataset.act === 'del') {
-        if (confirm(t('Ta bort notifieraren?'))) { NOTI.splice(Number(p.dataset.i), 1); drawNotifiers(); }
+        if (confirm(t('Ta bort notifieringen?'))) { NOTI.splice(Number(p.dataset.i), 1); drawNotifiers(); }
       } else if (el.dataset.act === 'test') {
         if (!n.id) return toast(t('Spara först'), true);
         el.disabled = true;
@@ -940,7 +1004,7 @@ function drawNotifiers() {
     });
   });
   $('#saveN').onclick = async () => {
-    try { await api('/api/notifiers', { method: 'PUT', body: NOTI }); await loadConfig(); toast(t('Sparat')); renderNotifiers(); }
+    try { await api('/api/notifiers', { method: 'PUT', body: NOTI }); await loadConfig(); toast(t('Sparat')); render(); }
     catch (e) { toast(e.message, true); }
   };
 }
@@ -1031,7 +1095,7 @@ function renderSettings() {
   try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) { zones = ['UTC', 'Europe/Stockholm', 'Europe/London', 'America/New_York']; }
   const models = S.models.length ? S.models : [{ name: c.detector.model, source: 'builtin' }];
   main.innerHTML = `
-  <h2>${t('Inställningar')}</h2>
+  <h2>${t('Övrigt')}</h2>
   <form id="setForm">
   <div class="panel"><h3>${t('Språk och tidszon')}</h3><div class="grid">
     <label class="f">${t('Språk')}<select name="language"><option value="sv" ${S.lang === 'sv' ? 'selected' : ''}>Svenska</option><option value="en" ${S.lang === 'en' ? 'selected' : ''}>English</option></select></label>
@@ -1094,8 +1158,6 @@ function renderSettings() {
     <div style="margin-top:10px" id="ctlUrlBox"></div>
   </div>
 
-  <div class="panel" id="modesPanel"></div>
-
   <div class="panel"><h3>${t('Säkerhetskopia')}</h3>
     <label class="check"><input type="checkbox" id="expSecrets" checked> ${t('Ta med lösenord och nycklar')}</label>
     <p class="hint-box" style="margin:6px 0 10px">${t('Filen innehåller då lösenord i klartext. Förvara den säkert.')}</p>
@@ -1103,7 +1165,10 @@ function renderSettings() {
       <label class="btn" style="display:inline-block">⬆ ${t('Importera')}<input type="file" id="impFile" accept="application/json,.json" hidden></label></div>
   </div>`;
 
-  drawModesPanel();
+  const form = $('#setForm');
+  const ser = () => [...form.elements].map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001');
+  let snap = ser();
+  S.dirty = () => !!$('#setForm') && ser() !== snap;
   const ctlUrl = () => {
     const u = `${S.triggerBase}/api/control?token=${encodeURIComponent(c.trigger_token)}&camera=${encodeURIComponent($('#ctlCam').value)}&action=${$('#ctlAct').value}`;
     $('#ctlUrlBox').innerHTML = copyRow('ctlUrl', u);
@@ -1122,9 +1187,10 @@ function renderSettings() {
     let data;
     try { data = JSON.parse(await f.text()); } catch (err) { return toast(t('Filen kunde inte läsas'), true); }
     if (!confirm(t('Importera inställningar? Alla nuvarande inställningar ersätts.'))) return;
+    S.dirty = null;
     try {
       const r = await api('/api/import', { method: 'POST', body: data });
-      toast(t('Importerat: {c} kameror, {n} notifierare', { c: r.cameras, n: r.notifiers }));
+      toast(t('Importerat: {c} kameror, {n} notifieringar', { c: r.cameras, n: r.notifiers }));
       await sleep(800); location.reload();
     } catch (err) { toast(err.message, true); }
   };
@@ -1147,11 +1213,17 @@ function renderSettings() {
     const btn = f.querySelector('button.primary'); btn.disabled = true;
     try {
       await api('/api/settings', { method: 'PUT', body });
-      if (newLang !== S.lang) { location.reload(); return; }
+      snap = ser();
+      if (newLang !== S.lang) { S.dirty = null; location.reload(); return; }
       await loadConfig(); toast(t('Sparat'));
     } catch (err) { toast(err.message, true); }
     btn.disabled = false;
   });
+}
+
+function renderModes() {
+  main.innerHTML = `<h2>${t('Lägen')}</h2><div class="panel" id="modesPanel"></div>`;
+  drawModesPanel();
 }
 
 function drawModesPanel() {
@@ -1162,11 +1234,13 @@ function drawModesPanel() {
   const DAYS = S.lang === 'en' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
   const box = $('#modesPanel');
   const nm = m => m.name || (DEFAULT_MODE_NAMES[m.id] ? t(DEFAULT_MODE_NAMES[m.id]) : m.id);
-  const opts = (sel, empty) => (empty ? `<option value="">${t('(ändra inte)')}</option>` : '') + M.map(m => `<option value="${esc(m.id)}" ${sel === m.id ? 'selected' : ''}>${esc(nm(m))}</option>`).join('');
+  const opts = (sel, empty, special) => (empty ? `<option value="">${t('(ändra inte)')}</option>` : '') + M.map(m => `<option value="${esc(m.id)}" ${sel === m.id ? 'selected' : ''}>${esc(nm(m))}</option>`).join('')
+    + (special ? [['@homemode', t('↩ Följ Home Mode')], ['@previous', t('↩ Föregående läge')]].map(([v, l]) => `<option value="${v}" ${sel === v ? 'selected' : ''}>${l}</option>`).join('') : '');
+  const snap = JSON.stringify([M, A]);
+  S.dirty = () => !!$('#mSave') && JSON.stringify([M, A]) !== snap;
   const draw = () => {
     box.innerHTML = `
-    <h3>${t('Lägen')}</h3>
-    <p class="muted small" style="margin-top:0">${t('Läget avgör vilka kameror som larmar och vilka notifierare som skickar (väljs under Kameror och Notifierare). Det senaste som ändrar läget gäller: manuellt, webhook, schema eller Home Mode.')}</p>
+    <p class="muted small" style="margin-top:0">${t('Läget avgör vilka kameror som larmar och vilka notifieringar som skickas (väljs under Kameror och Notifiering). Det senaste som ändrar läget gäller: manuellt, webhook, schema eller Home Mode.')}</p>
     <div class="modelist">${M.map((m, i) => `<div class="row"><input data-mi="${i}" value="${esc(m.name)}" placeholder="${esc(nm({ id: m.id }))}" style="max-width:240px"><span class="muted small">id: ${esc(m.id)}</span>${M.length > 1 ? `<button type="button" class="link" data-mdel="${i}">${t('Ta bort')}</button>` : ''}</div>`).join('')}</div>
     <button type="button" class="btn" id="mAdd" style="margin-top:8px">+ ${t('Nytt läge')}</button>
 
@@ -1178,10 +1252,11 @@ function drawModesPanel() {
     </div>
 
     <h3 style="margin-top:18px">${t('Schema')}</h3>
-    <p class="muted small" style="margin-top:0">${t('Byt läge vid en viss tid, t.ex. Natt 23:00 och Hemma 06:00.')}</p>
+    <p class="muted small" style="margin-top:0">${t('Byt läge vid en viss tid, t.ex. Natt 01:00 och ↩ Följ Home Mode 06:00.')}</p>
+    <p class="hint-box" style="margin:0 0 8px">${t('Från ett schemabyte till återgången väntar Home Mode-ändringar. ↩ Följ Home Mode går till det läge Home Mode anger just då (annars till läget före schemat), ↩ Föregående läge går tillbaka till läget före schemat. Ändrar du läget för hand eller via webhook gäller det direkt och väntan upphör.')}</p>
     <div class="schedlist">${A.schedule.map((e, i) => `<div class="row sched"><input type="time" data-st="${i}" value="${esc(e.time || '23:00')}" style="width:auto">
       <div class="chips">${DAYS.map((d, di) => `<button type="button" class="chip ${(e.days || [0, 1, 2, 3, 4, 5, 6]).includes(di) ? 'on' : ''}" data-sd="${i}" data-day="${di}">${d}</button>`).join('')}</div>
-      <select data-sm="${i}" style="width:auto">${opts(e.mode)}</select><button type="button" class="link" data-sdel="${i}">${t('Ta bort')}</button></div>`).join('') || `<p class="muted small">${t('Inget schema.')}</p>`}</div>
+      <select data-sm="${i}" style="width:auto">${opts(e.mode, false, true)}</select><button type="button" class="link" data-sdel="${i}">${t('Ta bort')}</button></div>`).join('') || `<p class="muted small">${t('Inget schema.')}</p>`}</div>
     <button type="button" class="btn" id="sAdd" style="margin-top:8px">+ ${t('Ny tid')}</button>
 
     <h3 style="margin-top:18px">${t('Byt läge via webhook')}</h3>
@@ -1215,10 +1290,26 @@ function drawModesPanel() {
       ev.days = ev.days.includes(day) ? ev.days.filter(x => x !== day) : [...ev.days, day].sort(); e.target.classList.toggle('on');
     } else if (e.target.id === 'mSave') {
       e.target.disabled = true;
-      try { await api('/api/settings', { method: 'PUT', body: { modes: M, mode_auto: A } }); await loadConfig(); updateModePill(S.cfg.mode); toast(t('Sparat')); renderSettings(); }
+      try { await api('/api/settings', { method: 'PUT', body: { modes: M, mode_auto: A } }); await loadConfig(); updateModePill(S.cfg.mode); toast(t('Sparat')); render(); }
       catch (err) { toast(err.message, true); e.target.disabled = false; }
     }
   });
+}
+
+/* ---------------------------------------------------------------- guide */
+function renderGuide() {
+  const g = (window.GUIDE || {})[S.lang] || (window.GUIDE || {}).sv;
+  if (!g) { main.innerHTML = `<p class="muted">–</p>`; return; }
+  main.innerHTML = `<div class="guide">
+    <h2>${esc(g.title)}</h2>
+    <p class="muted">${esc(g.intro)}</p>
+    <div class="toc">${g.sections.map(([id, title]) => `<a class="chip" href="#g-${id}">${esc(title)}</a>`).join('')}</div>
+    ${g.sections.map(([id, title, html]) => `<div class="panel" id="g-${id}"><h3>${esc(title)}</h3>${html}</div>`).join('')}
+  </div>`;
+  main.querySelectorAll('a[href^="#g-"]').forEach(a => a.addEventListener('click', e => {
+    const el = document.getElementById(a.getAttribute('href').slice(1));
+    if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }));
 }
 
 /* ---------------------------------------------------------------- status */
@@ -1241,11 +1332,13 @@ async function renderStatus() {
     $('#stOut').className = '';
     S.cfg.mode = s.mode; updateModePill(s.mode);
     const mi = s.mode || {};
-    const srcName = { manual: t('manuellt'), webhook: 'webhook', schedule: t('schema'), homemode: 'Home Mode', default: '–' }[mi.source] || mi.source || '–';
+    const srcName = { manual: t('manuellt'), webhook: 'webhook', schedule: t('schema'), schedule_return: t('schema'), homemode: 'Home Mode', default: '–' }[mi.source] || mi.source || '–';
+    setPriority(s.priority?.until);
     $('#stOut').innerHTML = `
       <div class="panel"><h3>${t('Läge')}</h3>
         <div class="chips modebtns">${modeList().map(m => `<button class="chip ${m.id === mi.current ? 'on' : ''}" data-setmode="${esc(m.id)}">${esc(m.name)}</button>`).join('')}</div>
-        <p class="small muted" style="margin:8px 0 0">${t('Senast ändrat: {d} ({s})', { d: mi.since ? fmtTime(mi.since) : '–', s: esc(srcName) })}${mi.follow_homemode ? ' · Home Mode: ' + (mi.homemode === true ? t('på') : mi.homemode === false ? t('av') : t('okänt') + (mi.homemode_error ? ' (' + esc(mi.homemode_error) + ')' : '')) : ''}</p></div>
+        <p class="small muted" style="margin:8px 0 0">${t('Senast ändrat: {d} ({s})', { d: mi.since ? fmtTime(mi.since) : '–', s: esc(srcName) })}${mi.follow_homemode ? ' · Home Mode: ' + (mi.homemode === true ? t('på') : mi.homemode === false ? t('av') : t('okänt') + (mi.homemode_error ? ' (' + esc(mi.homemode_error) + ')' : '')) : ''}</p>
+        ${mi.hold ? `<p class="small" style="margin:6px 0 0">⏸ ${t('Schemat håller läget – Home Mode väntar till återgången.')}</p>` : ''}</div>
       <div class="panel"><div class="row" style="justify-content:space-between"><h3>${t('Uppdatering')}</h3><button class="btn" id="updBtn">${t('Sök efter uppdatering')}</button></div>
         <div id="updOut">${updateHtml(s.update || S.update)}</div></div>
       <div class="panel"><h3>${t('AI')}</h3>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 (build 9) – 2026-11-09
+- **New menu:** Events · Settings · Status · Guide. Settings has four tabs: Cameras · Notifications · Modes · Other. The last used tab is remembered. *Notifiers* is now called *Notifications*.
+- **Guide** in the app (English and Swedish) and `docs/guide.md` on GitHub; the README now covers installation and points to the guide.
+- **Unsaved changes warning** when leaving a tab, a camera or the page.
+- **Schedule** can set *↩ Follow Home Mode* or *↩ Previous mode*. Between a schedule change and the return, Home Mode changes wait; a change by hand or via webhook applies immediately and ends the waiting.
+- **I am walking past now**: 3 images per second for 90 seconds, motion measured between images 1 s apart, the AI analyses as many as it can. During the walk the calibration goes before alarms (alarm snapshots are taken immediately and analysed afterwards, up to 90 s late) – confirmation before start and a countdown in the header.
+- **One calibration at a time** (checked in the UI and on the server).
+
 ## 0.5 (build 8) – 2026-11-09
 - **Calibration** per camera (12–72 h): image pairs every 30 s with SynoArgus' own motion measurement in the detection area plus AI, every Surveillance Station reaction logged with the AI result, *I am walking past now*, load protection.
 - Report: reactions, share of noise, missed targets, reactions per hour, day/night; proposal within ±10 in steps of 5 that never lowers the share of reacting targets; minimum data requirements; *Apply* and *Undo*.

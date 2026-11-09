@@ -146,3 +146,27 @@ pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap:
 .hbar span { position: absolute; bottom: -14px; left: 0; font-size: 10px; color: var(--muted); }
 .proposal { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 4px; }
 .proposal b { font-size: 16px; margin-left: 6px; }
+/* underflikar under Inställningar */
+.subnav { position: sticky; top: 50px; z-index: 4; display: flex; gap: 4px; justify-content: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.subnav::-webkit-scrollbar { display: none; }
+.subnav button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted); padding: 6px 14px; border-radius: 99px; cursor: pointer; white-space: nowrap; }
+.subnav button.active { background: var(--chip-on); color: var(--chip-on-text); }
+@media (max-width: 820px) { .subnav { top: 88px; padding: 6px 8px; gap: 2px; } .subnav button { flex: 1 0 auto; padding: 6px 6px; font-size: 13.5px; } }
+.priopill { font-size: 12px; font-weight: 600; background: var(--accent); color: #fff; border-radius: 99px; padding: 3px 10px; white-space: nowrap; }
+@media (max-width: 420px) { .priopill { font-size: 11px; padding: 2px 7px; } }
+/* guide */
+.guide { max-width: 820px; }
+.guide .toc { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.guide .toc a { text-decoration: none; }
+.guide h3 { margin-top: 4px; }
+.guide h4 { margin: 14px 0 6px; font-size: 14.5px; }
+.guide p, .guide li { font-size: 14px; }
+.guide ol, .guide ul { padding-left: 22px; margin: 6px 0; }
+.guide li { margin-bottom: 4px; }
+.guide code { word-break: break-word; }
+.guide .panel { scroll-margin-top: 140px; }
+.priopill .s { display: none; }
+@media (max-width: 600px) { .priopill .l { display: none; } .priopill .s { display: inline; } }
+@media (max-width: 420px) { .who { gap: 6px; } .modepill { padding: 3px 8px; } }
+.who .link { white-space: nowrap; }
+@media (max-width: 360px) { .brand span { font-size: 15px; } header.top { gap: 8px 10px; } }

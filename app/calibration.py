@@ -20,6 +20,7 @@ import logging
 import sqlite3
 import threading
 import time
+from collections import deque
 from datetime import datetime
 
 import numpy as np
@@ -32,14 +33,19 @@ log = logging.getLogger("synoargus.calibration")
 LEVELS = [4, 8, 12, 16, 24, 32, 48, 64]   # pixelnivåer (0-255) där andelen ändrad yta mäts
 DIFF_SIZE = (160, 90)
 PAIR_INTERVAL = 30          # sekunder mellan bildpar
-WALK_INTERVAL = 5           # tätare bildpar under "Jag går förbi nu"
-WALK_SECONDS = 120
+WALK_FPS = 3                # "Jag går förbi nu": 3 bilder per sekund ...
+WALK_SECONDS = 90           # ... i 90 sekunder
+WALK_GAP = 1.0              # rörelsen mäts mellan bilder 1 s isär (bild i mot i+3)
 REACTION_AI_GAP = 5         # högst en AI-analys per 5 s och kamera för reaktioner
 MISS_BEFORE, MISS_AFTER = 60, 15   # en reaktion inom detta fönster räknas som träff
 MIN_REACTIONS, MIN_TARGETS, MIN_NOISE = 20, 2, 30
 MAX_STEP, STEP = 10, 5
 
 _lock = threading.Lock()
+
+
+class BusyError(Exception):
+    """En kalibrering pågår redan (på kameran i args[0])."""
 
 
 def _db():
@@ -233,6 +239,8 @@ class CalibrationManager:
         self._busy = set()
         self._last_react_ai = {}
         self.slow = {}              # run_id -> True om analysen är långsam (glesare bildpar)
+        self._walk_task = None
+        self.walk_info = None       # {"camera", "until", "frames", "analysed"} under "Jag går förbi nu"
 
     # ---- databas
     def _run(self, camera):
@@ -243,6 +251,15 @@ class CalibrationManager:
     def running(self, camera):
         r = self._run(camera)
         return r if r and r["status"] == "running" else None
+
+    def active(self):
+        """Kameran som kalibreras just nu (bara en i taget), annars None."""
+        with _lock, _db() as con:
+            r = con.execute("SELECT camera FROM calib_runs WHERE status='running' ORDER BY id DESC LIMIT 1").fetchone()
+        return r[0] if r else None
+
+    def walking(self):
+        return bool(self._walk_task and not self._walk_task.done())
 
     def _samples(self, run_id):
         with _lock, _db() as con:
@@ -255,11 +272,12 @@ class CalibrationManager:
             out.append(d)
         return out
 
-    def _add(self, run_id, kind, levels=None, target=None, moving=None, night=None, walk=False, result=None):
+    def _add(self, run_id, kind, levels=None, target=None, moving=None, night=None, walk=False, result=None,
+             ts=None):
         with _lock, _db() as con:
             con.execute("INSERT INTO calib_samples (run_id, ts, kind, levels, target, moving, night, walk, result) "
                         "VALUES (?,?,?,?,?,?,?,?,?)",
-                        (run_id, time.time(), kind, json.dumps(levels) if levels else None,
+                        (run_id, ts or time.time(), kind, json.dumps(levels) if levels else None,
                          None if target is None else int(target), int(bool(moving)), int(bool(night)),
                          int(bool(walk)), result))
 
@@ -271,8 +289,9 @@ class CalibrationManager:
     # ---- åtgärder
     async def start(self, camera, hours):
         hours = max(12, min(72, int(hours)))
-        if self.running(camera):
-            raise ValueError("running")
+        other = self.active()
+        if other:
+            raise BusyError(other)
         s, t, lo, hi, _ = await self.md_view(camera)
         now = time.time()
         with _lock, _db() as con:
@@ -288,14 +307,25 @@ class CalibrationManager:
         r = self.running(camera)
         if not r:
             raise ValueError("not running")
+        if self.walking():
+            return self.walk_info["until"]
         until = time.time() + WALK_SECONDS
         self._update(r["id"], walk_until=until)
-        self._next[r["id"]] = time.time()
+        r["walk_until"] = until
+        self.engine.priority_until = until      # kalibreringen går före larm
+        self.walk_info = {"camera": camera, "until": until, "frames": 0, "analysed": 0}
+        self._walk_task = asyncio.create_task(self._walk(r, until))
         return until
+
+    def _stop_walk(self):
+        if self.walking():
+            self._walk_task.cancel()
+        self.engine.priority_until = 0
 
     async def stop(self, camera):
         r = self.running(camera)
         if r:
+            self._stop_walk()
             await self._finish(r, "stopped")
 
     def clear(self, camera):
@@ -323,7 +353,8 @@ class CalibrationManager:
             rep["preliminary"] = True
         return {"id": r["id"], "camera": camera, "status": r["status"], "started": r["started"], "ends": r["ends"],
                 "walk_until": r["walk_until"], "before": json.loads(r["before"] or "null"),
-                "applied": json.loads(r["applied"] or "null"), "report": rep, "slow": self.slow.get(r["id"], False)}
+                "applied": json.loads(r["applied"] or "null"), "report": rep, "slow": self.slow.get(r["id"], False),
+                "walk": self.walk_info if self.walking() and self.walk_info["camera"] == camera else None}
 
     def set_applied(self, camera, values):
         r = self._run(camera)
@@ -338,6 +369,8 @@ class CalibrationManager:
             lo, hi = 1, 99
         rep = build_report(self._samples(r["id"]), before.get("sensitivity"), before.get("threshold"),
                            lo, hi, r["started"], r["ends"])
+        if self.walk_info and self.walk_info["camera"] == r["camera"]:
+            self._stop_walk()
         self._update(r["id"], status=status, report=json.dumps(rep))
         # rådata behövs inte längre när rapporten är sparad
         with _lock, _db() as con:
@@ -351,7 +384,7 @@ class CalibrationManager:
         if not r:
             return
         now = time.time()
-        if now - self._last_react_ai.get(camera, 0) < REACTION_AI_GAP or self._any_busy():
+        if now - self._last_react_ai.get(camera, 0) < REACTION_AI_GAP or self._any_busy() or self.walking():
             self._add(r["id"], "reaction", walk=now < (r["walk_until"] or 0))
             return
         self._last_react_ai[camera] = now
@@ -388,6 +421,83 @@ class CalibrationManager:
         self._add(r["id"], "pair", levels=levels, target=bool(valid), moving=moving, night=is_night(b),
                   walk=time.time() < (r["walk_until"] or 0))
 
+    async def _walk(self, r, until):
+        """3 bilder per sekund i 90 s. AI:n analyserar så många bilder den hinner (den nyaste först);
+        varje analyserad bild jämförs med bilden ~1 s före. Bara analyserade bilder blir bildpar."""
+        camera = r["camera"]
+        cam = (self.cfg.get("cameras") or {}).get(camera)
+        frames = deque(maxlen=WALK_FPS * 4)
+        done = asyncio.Event()
+        try:
+            if not cam:
+                return
+            try:
+                _, _, _, _, region = await self.md_view(camera)
+            except Exception:
+                region = None
+            mask = region_mask(region, *DIFF_SIZE)
+            await asyncio.to_thread(self.engine.ensure_model)
+
+            async def grabber():
+                t0, k = time.time(), 0
+                try:
+                    while time.time() < until:
+                        delay = t0 + k / WALK_FPS - time.time()
+                        if delay > 0:
+                            await asyncio.sleep(delay)
+                        try:
+                            img = await self.engine.grab(cam)
+                            frames.append((time.time(), img))
+                            self.walk_info["frames"] += 1
+                        except Exception as e:
+                            log.debug("Kalibrering, bild %s: %s", camera, e)
+                        k = max(k + 1, int((time.time() - t0) * WALK_FPS))   # hoppa över om vi ligger efter
+                finally:
+                    done.set()
+
+            def partner(b_ts):
+                best = None
+                for ts, img in frames:
+                    err = abs(b_ts - ts - WALK_GAP)
+                    if err <= 0.4 and (best is None or err < best[0]):
+                        best = (err, img)
+                return best[1] if best else None
+
+            async def analyser():
+                last = 0
+                while not done.is_set():
+                    pick = None
+                    for ts, img in reversed(frames):
+                        if ts <= last:
+                            break
+                        a = partner(ts)
+                        if a is not None:
+                            pick = (ts, a, img)
+                            break
+                    if not pick:
+                        await asyncio.sleep(0.1)
+                        continue
+                    ts, a, b = pick
+                    last = ts
+                    d = await asyncio.to_thread(diff_map, a, b)
+                    levels = levels_from(d, mask)
+                    dets, valid = await asyncio.to_thread(self.engine.analyse, cam, b)
+                    moving = any(box_moving(d, v, b.size) for v in valid)
+                    self._add(r["id"], "pair", levels=levels, target=bool(valid), moving=moving,
+                              night=is_night(b), walk=True, ts=ts)
+                    self.walk_info["analysed"] += 1
+
+            await asyncio.gather(grabber(), analyser())
+            log.info("Jag går förbi nu (%s): %d bilder, %d analyserade", camera,
+                     self.walk_info["frames"], self.walk_info["analysed"])
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.warning("Kalibrering, jag går förbi nu %s: %s", camera, e)
+        finally:
+            self.engine.priority_until = 0
+            self._next[r["id"]] = time.time() + PAIR_INTERVAL
+
     async def loop(self):
         init_db()
         while True:
@@ -401,10 +511,9 @@ class CalibrationManager:
                         continue
                     if r["id"] in self._busy or now < self._next.get(r["id"], 0):
                         continue
-                    if self._any_busy():   # vanliga larm går först
+                    if self.walking() or self._any_busy():   # vanliga larm går före de vanliga bildparen
                         continue
-                    walking = now < (r["walk_until"] or 0)
-                    interval = WALK_INTERVAL if walking else PAIR_INTERVAL * (2 if self.slow.get(r["id"]) else 1)
+                    interval = PAIR_INTERVAL * (2 if self.slow.get(r["id"]) else 1)
                     self._next[r["id"]] = now + interval
                     self._busy.add(r["id"])
 

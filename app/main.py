@@ -24,8 +24,8 @@ from .detector import Detector
 from .engine import Engine
 from .filters import draw
 from .i18n import tr
-from .modes import ModeManager
-from .calibration import CalibrationManager
+from .modes import ModeManager, SPECIAL as SPECIAL_MODES
+from .calibration import BusyError, CalibrationManager
 from . import calibration as calibration_mod
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
@@ -306,6 +306,7 @@ async def state(request: Request):
         "setup_allowed": not config.get("setup_done") and auth.is_private(client_ip(request)),
         "logged_in": bool(ok), "user": user if ok else None,
         "mode": modes.info() if ok else None,
+        "priority": _priority() if ok else None,
         "dsm_login": a.get("dsm_login", True), "unlocked": unlocked(),
         "sso": bool(a["sso"].get("enabled") and a["sso"].get("issuer") and a["sso"].get("client_id")),
     }
@@ -503,7 +504,7 @@ async def put_settings(request: Request, body: dict = Body(...)):
             for k in ("on", "off"):
                 if hm.get(k) not in ids:
                     hm[k] = ""
-            d["mode_auto"]["schedule"] = [e for e in d["mode_auto"].get("schedule") or [] if e.get("mode") in ids]
+            d["mode_auto"]["schedule"] = [e for e in d["mode_auto"].get("schedule") or [] if e.get("mode") in ids or e.get("mode") in SPECIAL_MODES]
             if d["mode"].get("current") not in ids:
                 d["mode"]["current"] = new["modes"][0]["id"]
         config.update(cleanup)
@@ -777,7 +778,7 @@ engine.on_trigger = _on_trigger
 async def calibration_get(name: str, request: Request):
     require(request)
     cam_or_404(name)
-    return {"run": await calib.report(name)}
+    return {"run": await calib.report(name), "active": calib.active()}
 
 
 @app.post("/api/cameras/{name}/calibration")
@@ -813,13 +814,15 @@ async def calibration_post(name: str, request: Request, body: dict = Body(...)):
                 calib.set_applied(name, None)
         else:
             raise err(400, "Okänd åtgärd")
+    except BusyError as e:
+        raise err(409, "En kalibrering pågår redan på {cam}. Stoppa den eller vänta tills den är klar.", cam=e.args[0])
     except ValueError:
         raise err(409, "En kalibrering pågår redan")
     except HTTPException:
         raise
     except Exception as e:
         raise _ss_err(e, "motion")
-    return {"run": await calib.report(name)}
+    return {"run": await calib.report(name), "active": calib.active()}
 
 
 # ------------------------------------------------------------------ action rules i Surveillance Station
@@ -1039,7 +1042,7 @@ async def put_notifiers(request: Request, body: list = Body(...)):
     out = []
     for n in body:
         if n.get("type") not in notifiers.KINDS:
-            raise err(400, "Okänd typ av notifierare")
+            raise err(400, "Okänd typ av notifiering")
         base = notifiers.new_notifier(n["type"])
         if n.get("id") in old:
             base = old[n["id"]]
@@ -1054,7 +1057,7 @@ async def test_notifier(nid: str, request: Request):
     require(request)
     n = next((n for n in config.get("notifiers") or [] if n["id"] == nid), None)
     if not n:
-        raise err(404, "Spara notifieraren först")
+        raise err(404, "Spara notifieringen först")
     img = Image.new("RGB", (640, 360), (40, 44, 52))
     dets = [{"label": "person", "confidence": 99.0, "x1": 260, "y1": 80, "x2": 380, "y2": 320, "valid": True}]
     jpeg = draw(img, dets)
@@ -1097,7 +1100,15 @@ async def status(request: Request):
         st = engine.state.get(name)
         cams[name] = {"busy": st.busy, "last": st.last_result, "last_alarm": st.last_alarm or None} if st else {}
     return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30],
-            "update": _update["data"], "mode": modes.info(), **storage.stats()}
+            "update": _update["data"], "mode": modes.info(), "priority": _priority(), **storage.stats()}
+
+
+def _priority():
+    """Pågående "Jag går förbi nu" (larm fördröjs) för headern."""
+    if not engine.priority_active():
+        return None
+    return {"camera": (calib.walk_info or {}).get("camera"), "until": engine.priority_until,
+            "left": max(0, round(engine.priority_until - time.time()))}
 
 
 @app.post("/api/mode/set")

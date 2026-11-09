@@ -34,6 +34,10 @@ class Engine:
         self.recent = []  # senaste meddelanden för statussidan
         self.modes = None  # ModeManager, sätts i main
         self.on_trigger = None  # anropas vid varje reaktion (kalibreringen)
+        self.priority_until = 0  # "Jag går förbi nu": kalibreringen går före larm till denna tid
+
+    def priority_active(self):
+        return time.time() < self.priority_until
 
     def _st(self, name):
         return self.state.setdefault(name, CameraState())
@@ -74,7 +78,7 @@ class Engine:
         """Anropas av Surveillance Station. Returnerar en kort status."""
         cam = (self.cfg.get("cameras") or {}).get(name)
         if not cam:
-            self._note(name, tr("Okänd kamera (lägg till den under Kameror)"))
+            self._note(name, tr("Okänd kamera (lägg till den under Inställningar > Kameror)"))
             return "unknown"
         st = self._st(name)
         entry = {"ts": time.time(), "result": None, "outcome": None}
@@ -124,14 +128,24 @@ class Engine:
                 await asyncio.sleep(cam["wait_ms"] / 1000)
             tries = max(1, int(self.cfg.cam_setting(cam, "max_snapshots") or 1))
             interval = (self.cfg.get("defaults", "snapshot_interval_ms") or 700) / 1000
+            queued = []
+            if self.priority_active():
+                # kalibreringen går före: ta bilderna nu, analysera när AI:n är ledig
+                self._note(name, tr("Rörelse: i kö (kalibrering pågår)"))
+                for i in range(tries):
+                    queued.append(await self.grab(cam))
+                    if i < tries - 1:
+                        await asyncio.sleep(interval)
+                while self.priority_active():
+                    await asyncio.sleep(0.5)
             t0 = time.time()
             img = all_dets = valid = None
             for i in range(tries):
-                img = await self.grab(cam)
+                img = queued[i] if i < len(queued) else await self.grab(cam)
                 all_dets, valid = await asyncio.to_thread(self.analyse, cam, img)
                 if valid:
                     break
-                if i < tries - 1:
+                if i < tries - 1 and not queued:
                     await asyncio.sleep(interval)
             ms = round((time.time() - t0) * 1000)
             st.last_result = {"ts": time.time(), "alarm": bool(valid), "ms": ms}

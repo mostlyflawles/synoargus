@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>SynoArgus</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="/static/icon.svg" alt="" width="28" height="28"><span>SynoArgus</span></div>
+  <div class="who" id="who" hidden><span id="whoName"></span><button class="link" id="logoutBtn">Logga ut</button></div>
+  <nav id="nav" hidden>
+    <button data-tab="events" data-label="Händelser" class="active">Händelser</button>
+    <button data-tab="cameras" data-label="Kameror">Kameror</button>
+    <button data-tab="notifiers" data-label="Notifierare">Notifierare</button>
+    <button data-tab="settings" data-label="Inställningar">Inställningar</button>
+    <button data-tab="status" data-label="Status">Status</button>
+  </nav>
+</header>
+
+<main id="main"><p class="muted center">…</p></main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="viewer"><img id="viewerImg" alt=""><form method="dialog"><button id="viewerClose">Stäng</button></form></dialog>
+<script src="/static/app.js"></script>
+</body>
+</html>

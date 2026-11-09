@@ -108,6 +108,12 @@ const EN = {
   'Installera SSO Server i DSM, aktivera OIDC och lägg till SynoArgus som app med omdirigerings-URI nedan.': 'Install SSO Server in DSM, enable OIDC and add SynoArgus as an application with the redirect URI below.',
   'Aktivera SSO': 'Enable SSO', 'Issuer / Well-known-adress': 'Issuer / Well-known URL', 'Klient-id (Application ID)': 'Client ID (Application ID)',
   'Klienthemlighet (Application Secret)': 'Client secret (Application Secret)', 'Omdirigerings-URI': 'Redirect URI',
+  'Kontrollerar regler i Surveillance Station…': 'Checking rules in Surveillance Station…', 'Kunde inte läsa reglerna: {e}': 'Could not read the rules: {e}',
+  'Visa rådata från Surveillance Station': 'Show raw data from Surveillance Station', 'Regel finns i Surveillance Station: {n}': 'Rule exists in Surveillance Station: {n}',
+  'Regeln {n} pekar på en gammal adress.': 'The rule {n} points to an old address.', 'Uppdatera adressen': 'Update the address',
+  'Ingen regel för kameran i Surveillance Station.': 'No rule for this camera in Surveillance Station.', 'Skapa regel': 'Create rule',
+  'Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.': 'First create a rule with a webhook for any camera in Surveillance Station. It is used as a template.',
+  'Regeln skapades': 'The rule was created', 'Adressen uppdaterades': 'The address was updated',
   // status
   'Hämtar…': 'Loading…', 'Modell <b>{m}</b> på <b>{d}</b> ({s} px)': 'Model <b>{m}</b> on <b>{d}</b> ({s} px)', 'grafikkretsen': 'the GPU', 'processorn': 'the CPU',
   ' · senaste analys {ms} ms': ' · last analysis {ms} ms', 'Tillgängliga modeller: {m}': 'Available models: {m}', 'inga': 'none',
@@ -401,6 +407,7 @@ function renderCamEditor(cam) {
     <div class="row" style="justify-content:space-between"><h3>${esc(cam.name)}</h3><label class="check"><input type="checkbox" id="cEnabled" ${cam.enabled ? 'checked' : ''}> ${t('Aktiv')}</label></div>
     <p class="muted small" style="margin:0 0 4px">${t('Adress till Action Rule i Surveillance Station (Webhook, metod GET):')}</p>
     ${copyRow('trigUrl', url)}
+    <div id="arBox" class="arbox small muted">${t('Kontrollerar regler i Surveillance Station…')}</div>
   </div>
   <div class="panel">
     <h3>${t('Vad ska larma?')}</h3>
@@ -564,8 +571,34 @@ function renderCamEditor(cam) {
     (box.requestFullscreen || box.webkitRequestFullscreen || (() => box.classList.toggle('fake-full'))).call(box);
   };
 
+  // ---- action rule i Surveillance Station
+  const loadAr = async () => {
+    const box = $('#arBox'); if (!box) return;
+    box.className = 'arbox small muted'; box.textContent = t('Kontrollerar regler i Surveillance Station…');
+    let r;
+    try { r = await api(`/api/cameras/${enc}/actionrule`); }
+    catch (e) { box.innerHTML = `<span class="err">${esc(t('Kunde inte läsa reglerna: {e}', { e: e.message }))}</span>`; return; }
+    const raw = `<details class="small"><summary class="muted">${t('Visa rådata från Surveillance Station')}</summary><pre class="notes">${esc(JSON.stringify(r.raw, null, 2))}</pre></details>`;
+    const ok = r.rules.filter(x => x.current), old = r.rules.filter(x => !x.current);
+    const st = x => x.enabled === false || x.enabled === 0 ? ` <span class="tag">${t('avstängd')}</span>` : '';
+    let html = '';
+    if (ok.length) html = `<span class="okc">✓ ${t('Regel finns i Surveillance Station: {n}', { n: esc(ok.map(x => x.name).join(', ')) })}</span>${ok.map(st).join('')}`;
+    else if (old.length) html = `<span class="err">${t('Regeln {n} pekar på en gammal adress.', { n: esc(old.map(x => x.name).join(', ')) })}</span> <button class="btn" id="arUpdate">${t('Uppdatera adressen')}</button>`;
+    else html = `<span>${t('Ingen regel för kameran i Surveillance Station.')}</span> <button class="btn" id="arCreate">${t('Skapa regel')}</button>${r.template ? '' : `<br><span class="muted">${t('Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.')}</span>`}`;
+    box.className = 'arbox small'; box.innerHTML = html + raw;
+    const run = async (action, btn) => {
+      btn.disabled = true;
+      try { await api(`/api/cameras/${enc}/actionrule`, { method: 'POST', body: { action } }); toast(action === 'create' ? t('Regeln skapades') : t('Adressen uppdaterades')); }
+      catch (e) { toast(e.message, true); }
+      loadAr();
+    };
+    $('#arUpdate') && ($('#arUpdate').onclick = e => run('update', e.target));
+    $('#arCreate') && ($('#arCreate').onclick = e => run('create', e.target));
+  };
+  loadAr();
+
   // ---- rörelsedetektering i SS
-  const md = { s: null, th: null };
+  const md = { s: null, th: null, min: 1, max: 99 };
   const drawMd = (msg) => {
     if (msg) { $('#mdValues').innerHTML = msg; return; }
     $('#mdValues').className = '';
@@ -576,7 +609,7 @@ function renderCamEditor(cam) {
       </div>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="mdSave">${t('Spara till Surveillance Station')}</button><button class="btn" id="mdReload">${t('Läs om')}</button></div>`;
     $$('[data-md]').forEach(b => b.onclick = () => {
-      const k = b.dataset.md; md[k] = Math.max(1, Math.min(99, Number(md[k]) + Number(b.dataset.d)));
+      const k = b.dataset.md; md[k] = Math.max(md.min, Math.min(md.max, Number(md[k]) + Number(b.dataset.d)));
       $('#mdS').textContent = md.s; $('#mdT').textContent = md.th;
     });
     $('#mdReload').onclick = loadMd;
@@ -589,8 +622,8 @@ function renderCamEditor(cam) {
     $('#mdValues').className = 'muted small'; $('#mdValues').textContent = t('Hämtar värden…');
     try {
       const r = await api(`/api/cameras/${enc}/motion`);
-      if (!r.supported) return drawMd(`<span class="muted">${t('Surveillance Station gav inga värden för den här kameran. Rörelsedetekteringen sköts kanske av kameran själv (välj "By Surveillance Station" i kamerans inställningar).')}</span>`);
-      md.s = Number(r.sensitivity); md.th = Number(r.threshold); drawMd();
+      if (!r.supported || r.ss_cap === false || typeof r.sensitivity !== 'number') return drawMd(`<span class="muted">${t('Surveillance Station gav inga värden för den här kameran. Rörelsedetekteringen sköts kanske av kameran själv (välj "By Surveillance Station" i kamerans inställningar).')}</span>`);
+      md.s = r.sensitivity; md.th = r.threshold; md.min = r.min ?? 1; md.max = r.max ?? 99; drawMd();
     } catch (e) { drawMd(`<span class="err">${esc(t('Kunde inte läsa värdena: {e}', { e: e.message }))}</span>`); }
   };
   loadMd();

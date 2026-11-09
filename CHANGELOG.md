@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 (build 5) – 2026-11-09
+- Fixed: motion detection tuning showed NaN – Surveillance Station returns values as objects (`{"value": 95, "minValue": 1, …}`).
+- Saving sensitivity/threshold now sends all other motion settings (detection region etc.) back unchanged, respects min/max and verifies the result.
+- Action Rules: shows whether a rule exists for the camera, **Create rule** (from an existing webhook rule as template) and **Update the address** for rules pointing to an old token. Experimental.
+- README: credits to SynoAI and a note on AI-assisted development.
+
 ## 0.4 (build 4) – 2026-11-09
 - Built-in model is now **YOLOX** (Apache-2.0, tiny/s/m). Own Ultralytics models (YOLO26 etc.) via the optional converter container; models in `data/models` are picked up automatically.
 - Ready-made images on GitHub Container Registry, built by GitHub Actions – no build on the NAS needed.

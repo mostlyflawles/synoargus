@@ -20,6 +20,12 @@ with the picture.
 > SynoArgus is an independent project and is not affiliated with, endorsed by or supported by Synology Inc.
 > "Synology" and "Surveillance Station" are trademarks of Synology Inc.
 
+Inspired by [SynoAI](https://github.com/djdd87/SynoAI) by djdd87 (archived). SynoArgus is a separate implementation
+written from scratch; no code from SynoAI is used.
+
+SynoArgus was developed with AI assistance (Claude) and tested on a DS918+ by the maintainer.
+Issues and pull requests are welcome.
+
 ---
 
 ## Contents
@@ -120,6 +126,18 @@ The language can be switched at the top of the wizard. Your cameras are fetched 
 ## 4. Connect Surveillance Station
 
 Do this **for each camera**:
+
+**Automatic (experimental):** under each camera SynoArgus shows whether a matching Action Rule exists.
+
+- **Create rule** copies an existing Action Rule that has a webhook action (for any camera) and adapts it:
+  name `SynoArgus - <camera>`, event source = the camera, webhook URL = SynoArgus. So create **one** rule by hand
+  (below) first; the rest can be created with the button. Check the result in Surveillance Station.
+- **Update the address** fixes existing SynoArgus rules that point to an old address or token
+  (e.g. after a fresh install).
+- The SynoArgus DSM user needs permission to manage Action Rules in Surveillance Station.
+- If something fails, *Show raw data from Surveillance Station* shows what the NAS returned – useful in an issue.
+
+**Manual:**
 
 1. In SynoArgus, open **Cameras**, select the camera and press **Copy** next to the address.
 2. In Surveillance Station open **Action Rule** > **Add**:

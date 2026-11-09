@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import io
+import json
 import logging
 import os
 import re
@@ -23,7 +24,7 @@ from .detector import Detector
 from .engine import Engine
 from .filters import draw
 from .i18n import tr
-from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params
+from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -605,6 +606,21 @@ async def _ss_id(cam):
     return cam["ss_id"]
 
 
+def _val(v):
+    """Surveillance Station skickar värden som {"value": 95, "minValue": 1, "maxValue": 99, ...}."""
+    return v.get("value") if isinstance(v, dict) else v
+
+
+def _md_view(p):
+    s, t = p.get("sensitivity"), p.get("threshold")
+    lim = lambda v, k, d: v.get(k, d) if isinstance(v, dict) else d  # noqa: E731
+    ss_cap = all(not isinstance(v, dict) or v.get("ssCap", True) for v in (s, t))
+    return {"supported": True, "sensitivity": _val(s), "threshold": _val(t),
+            "min": max(lim(s, "minValue", 1), lim(t, "minValue", 1)),
+            "max": min(lim(s, "maxValue", 99), lim(t, "maxValue", 99)),
+            "ss_cap": ss_cap, "source": _val(p.get("source"))}
+
+
 @app.get("/api/cameras/{name}/motion")
 async def motion_get(name: str, request: Request):
     require(request)
@@ -616,26 +632,182 @@ async def motion_get(name: str, request: Request):
     p = find_md_params(raw)
     if p is None:
         return {"supported": False, "raw": raw}
-    return {"supported": True, "sensitivity": p.get("sensitivity"), "threshold": p.get("threshold"),
-            "source": p.get("source"), "raw": p}
+    return {**_md_view(p), "raw": p}
+
+
+MD_SKIP = ("sensitivity", "threshold", "relatedEvents", "camRoi")
+MD_MINIMAL = ("source", "mode", "keep", "history", "objectSize", "percentage", "region", "shortLiveSecond")
 
 
 @app.put("/api/cameras/{name}/motion")
 async def motion_put(name: str, request: Request, body: dict = Body(...)):
+    """Sparar känslighet och tröskel. Alla andra värden (t.ex. detekteringsområdet) skickas tillbaka oförändrade."""
     require(request)
     cam = cam_or_404(name)
     try:
+        sens, thr = int(body.get("sensitivity")), int(body.get("threshold"))
+    except (TypeError, ValueError):
+        raise err(400, "Ogiltiga värden")
+    try:
         cam_id = await _ss_id(cam)
-        current = find_md_params(await ss.motion_get(cam_id)) or {}
-        params = {k: current[k] for k in ("source", "keep", "history", "objectSize", "percentage", "mode")
-                  if k in current and not isinstance(current[k], (dict, list))}
-        params["sensitivity"] = max(1, min(99, int(body["sensitivity"])))
-        params["threshold"] = max(1, min(99, int(body["threshold"])))
-        await ss.motion_save(cam_id, params)
+        current = find_md_params(await ss.motion_get(cam_id))
+        if current is None:
+            raise err(400, "Hittade inga värden för rörelsedetektering")
+        view = _md_view(current)
+        if not view["ss_cap"]:
+            raise err(400, "Rörelsedetekteringen sköts av kameran, inte av Surveillance Station")
+        params = {}
+        for k, v in current.items():
+            if k in MD_SKIP or isinstance(v, list):
+                continue
+            if isinstance(v, dict):
+                if "value" in v:
+                    params[k] = v["value"]
+                continue
+            params[k] = v
+        params["sensitivity"] = max(view["min"], min(view["max"], sens))
+        params["threshold"] = max(view["min"], min(view["max"], thr))
+        try:
+            await ss.motion_save(cam_id, params)
+        except SynologyError as e:
+            if e.code != 101:
+                raise
+            # ogiltiga parametrar: försök igen med de grundläggande fälten
+            await ss.motion_save(cam_id, {k: params[k] for k in (*MD_MINIMAL, "sensitivity", "threshold")
+                                          if k in params})
         after = find_md_params(await ss.motion_get(cam_id)) or {}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(502, str(e))
-    return {"ok": True, "sensitivity": after.get("sensitivity"), "threshold": after.get("threshold")}
+    got_s, got_t = _val(after.get("sensitivity")), _val(after.get("threshold"))
+    if got_s != params["sensitivity"] or got_t != params["threshold"]:
+        raise err(502, "Surveillance Station sparade inte värdena (har nu {s}/{t})", s=got_s, t=got_t)
+    return {"ok": True, "sensitivity": got_s, "threshold": got_t}
+
+
+# ------------------------------------------------------------------ action rules i Surveillance Station
+
+def _walk_strings(obj, fn):
+    """Går igenom ett JSON-objekt (även JSON inbäddat som text) och byter strängar med fn."""
+    if isinstance(obj, dict):
+        return {k: _walk_strings(v, fn) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_walk_strings(v, fn) for v in obj]
+    if isinstance(obj, str):
+        st = obj.strip()
+        if st[:1] in "[{":
+            try:
+                inner = json.loads(st)
+                return json.dumps(_walk_strings(inner, fn), separators=(",", ":"))
+            except ValueError:
+                pass
+        return fn(obj)
+    return obj
+
+
+def _strings(obj):
+    found = []
+    _walk_strings(obj, lambda s: found.append(s) or s)
+    return found
+
+
+def _set_keys(obj, keys, value):
+    if isinstance(obj, dict):
+        return {k: (value if k in keys and not isinstance(v, (dict, list)) else _set_keys(v, keys, value))
+                for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_set_keys(v, keys, value) for v in obj]
+    if isinstance(obj, str) and obj.strip()[:1] in "[{":
+        try:
+            return json.dumps(_set_keys(json.loads(obj), keys, value), separators=(",", ":"))
+        except ValueError:
+            return obj
+    return obj
+
+
+def _trigger_url(request, name):
+    from urllib.parse import quote
+    base = (config.get("public_url") or str(request.base_url)).rstrip("/")
+    return f"{base}/api/trigger/{quote(name, safe='')}?token={quote(config.get('trigger_token'), safe='')}"
+
+
+def _rule_summary(rule, name, url):
+    from urllib.parse import quote
+    urls = [s for s in _strings(rule) if s.startswith("http") and "/api/trigger/" in s]
+    marker = [f"/api/trigger/{quote(name, safe='')}?", f"/api/trigger/{name}?"]
+    mine = [u for u in urls if any(m in u for m in marker)]
+    enabled = rule.get("enabled", rule.get("isEnabled", rule.get("status")))
+    return {"id": rule.get("id"), "name": rule.get("name"), "enabled": enabled, "urls": mine,
+            "current": url in mine} if mine else None
+
+
+async def _rules():
+    raw = await ss.action_rules()
+    return raw, find_rules(raw) or []
+
+
+@app.get("/api/cameras/{name}/actionrule")
+async def actionrule_get(name: str, request: Request):
+    require(request)
+    cam_or_404(name)
+    url = _trigger_url(request, name)
+    try:
+        raw, rules = await _rules()
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    mine = [r for r in (_rule_summary(x, name, url) for x in rules) if r]
+    template = any(any(s.startswith("http") for s in _strings(x)) for x in rules)
+    return {"url": url, "rules": mine, "template": template, "count": len(rules), "raw": raw}
+
+
+@app.post("/api/cameras/{name}/actionrule")
+async def actionrule_post(name: str, request: Request, body: dict = Body(default={})):
+    """action=update: byt adress i befintliga SynoArgus-regler för kameran.
+    action=create: skapa en ny regel genom att kopiera en befintlig webhook-regel som mall."""
+    require(request)
+    cam = cam_or_404(name)
+    url = _trigger_url(request, name)
+    action = (body or {}).get("action", "create")
+    try:
+        raw, rules = await _rules()
+        if action == "update":
+            changed = 0
+            for rule in rules:
+                s = _rule_summary(rule, name, url)
+                if not s or s["current"]:
+                    continue
+                new = _walk_strings(rule, lambda x: url if x in s["urls"] else x)
+                await ss.action_rule_save(new)
+                changed += 1
+            result = {"updated": changed}
+        else:
+            if any(_rule_summary(r, name, url) for r in rules):
+                raise err(409, "Det finns redan en SynoArgus-regel för kameran")
+            # mall: helst en befintlig SynoArgus-regel, annars någon regel med en webhook-adress
+            cands = [r for r in rules if any(s.startswith("http") and "/api/trigger/" in s for s in _strings(r))] \
+                or [r for r in rules if any(s.startswith("http") for s in _strings(r))]
+            if not cands:
+                raise err(400, "Skapa först en regel med webhook för valfri kamera i Surveillance Station. "
+                               "Den används som mall.")
+            tpl = cands[0]
+            tpl_urls = [s for s in _strings(tpl) if s.startswith("http")]
+            new = _walk_strings(tpl, lambda x: url if x in tpl_urls else x)
+            new = {k: v for k, v in new.items() if k not in ("id", "status")}
+            new["name"] = f"SynoArgus - {name}"
+            cam_id = await _ss_id(cam)
+            new = _set_keys(new, ("evtDevId", "evtDev", "evtCamId"), cam_id)
+            await ss.action_rule_save(new)
+            result = {"created": True}
+        _, rules = await _rules()
+        found = [r for r in (_rule_summary(x, name, url) for x in rules) if r and r["current"]]
+        if not found:
+            raise err(502, "Surveillance Station tog emot anropet men regeln syns inte. Skapa den manuellt.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    return {"ok": True, **result, "rules": found}
 
 
 @app.get("/api/cameras/{name}/triggers")

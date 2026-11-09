@@ -190,8 +190,57 @@ class SurveillanceStation:
     async def motion_save(self, cam_id, params):
         p = {"api": "SYNO.SurveillanceStation.Camera.Event", "version": "1", "method": "MDParamSave",
              "camId": str(cam_id)}
-        p.update({k: (str(v).lower() if isinstance(v, bool) else str(v)) for k, v in params.items()})
+        p.update(_flat(params))
         return await self._call(p)
+
+    # -------------------------------------------------------- action rules
+    async def _try_versions(self, api, method, versions, params):
+        last = None
+        for v in versions:
+            try:
+                return await self._call({"api": api, "version": v, "method": method, **params})
+            except SynologyError as e:
+                last = e
+                if e.code not in (102, 103, 104):
+                    raise
+        raise last
+
+    async def action_rules(self):
+        return await self._try_versions("SYNO.SurveillanceStation.ActionRule", "List", ("3", "2", "1"),
+                                        {"start": "0", "limit": "1000"})
+
+    async def action_rule_save(self, params):
+        return await self._try_versions("SYNO.SurveillanceStation.ActionRule", "Save", ("3", "2", "1"),
+                                        _flat(params))
+
+
+def _flat(params):
+    """Parametrar till Synologys webb-API: bool -> true/false, listor/objekt -> JSON."""
+    import json
+    out = {}
+    for k, v in params.items():
+        if isinstance(v, bool):
+            out[k] = str(v).lower()
+        elif isinstance(v, (dict, list)):
+            out[k] = json.dumps(v, separators=(",", ":"))
+        elif v is None:
+            continue
+        else:
+            out[k] = str(v)
+    return out
+
+
+def find_rules(data):
+    """Letar upp listan med action rules i svaret (fältnamnet varierar mellan versioner)."""
+    if isinstance(data, list) and data and all(isinstance(x, dict) for x in data) \
+            and any("name" in x for x in data):
+        return data
+    if isinstance(data, dict):
+        for v in data.values():
+            hit = find_rules(v)
+            if hit is not None:
+                return hit
+    return None
 
 
 def find_md_params(data):

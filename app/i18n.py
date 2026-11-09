@@ -27,6 +27,12 @@ EN = {
     "Filen är inte en SynoArgus-export": "The file is not a SynoArgus export",
     "Okänd åtgärd (on, off, toggle eller status)": "Unknown action (on, off, toggle or status)",
     "Hittade inga värden för rörelsedetektering": "No motion detection values found",
+    "Ogiltiga värden": "Invalid values",
+    "Rörelsedetekteringen sköts av kameran, inte av Surveillance Station": "Motion detection is handled by the camera, not by Surveillance Station",
+    "Surveillance Station sparade inte värdena (har nu {s}/{t})": "Surveillance Station did not save the values (now {s}/{t})",
+    "Det finns redan en SynoArgus-regel för kameran": "There is already a SynoArgus rule for this camera",
+    "Skapa först en regel med webhook för valfri kamera i Surveillance Station. Den används som mall.": "First create a rule with a webhook for any camera in Surveillance Station. It is used as a template.",
+    "Surveillance Station tog emot anropet men regeln syns inte. Skapa den manuellt.": "Surveillance Station accepted the call but the rule does not show up. Create it manually.",
     # synology
     "Fel användarnamn eller lösenord": "Wrong username or password",
     "Kontot är inaktiverat eller ett gästkonto": "The account is disabled or a guest account",

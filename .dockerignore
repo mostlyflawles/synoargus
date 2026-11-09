@@ -1,0 +1,8 @@
+data
+build.log
+**/__pycache__
+*.tar
+*.zip
+.git
+.github
+modeller/*.pt

@@ -1,0 +1,12 @@
+# runtime data: settings (passwords!), history, images, converted models
+data/
+# model files
+modeller/*.pt
+modeller/*.onnx
+# build output
+*.tar
+*.zip
+build.log
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5 (build 8) – 2026-11-09
+- **Calibration** per camera (12–72 h): image pairs every 30 s with SynoArgus' own motion measurement in the detection area plus AI, every Surveillance Station reaction logged with the AI result, *I am walking past now*, load protection.
+- Report: reactions, share of noise, missed targets, reactions per hour, day/night; proposal within ±10 in steps of 5 that never lowers the share of reacting targets; minimum data requirements; *Apply* and *Undo*.
+- No images are stored; raw data is deleted when the report is ready.
+
 ## 0.4.3 (build 7) – 2026-11-09
 - **Modes** (Home / Night / Away, renameable, add your own): per camera *Alarms in mode*, per notifier *Only in mode*. Mode pill in the header, mode buttons under Status.
 - Mode changes by hand, schedule, webhook (`/api/mode`) or by following Surveillance Station Home Mode – last change wins.

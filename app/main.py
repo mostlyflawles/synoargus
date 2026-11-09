@@ -25,6 +25,8 @@ from .engine import Engine
 from .filters import draw
 from .i18n import tr
 from .modes import ModeManager
+from .calibration import CalibrationManager
+from . import calibration as calibration_mod
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
 
@@ -185,6 +187,7 @@ async def check_update(force=False):
 @app.on_event("startup")
 async def startup():
     storage.init()
+    calibration_mod.init_db()
     log.info("%s %s (bygge %s) startar", APP_NAME, APP_VERSION, APP_BUILD)
     try:
         apply_timezone(config.get("timezone") or "UTC")
@@ -222,6 +225,7 @@ async def startup():
     asyncio.create_task(load())
     asyncio.create_task(housekeeping())
     asyncio.create_task(modes.loop())
+    asyncio.create_task(calib.loop())
     asyncio.create_task(update_loop())
 
 
@@ -689,15 +693,8 @@ MD_SKIP = ("sensitivity", "threshold", "relatedEvents", "camRoi")
 MD_MINIMAL = ("source", "mode", "keep", "history", "objectSize", "percentage", "region", "shortLiveSecond")
 
 
-@app.put("/api/cameras/{name}/motion")
-async def motion_put(name: str, request: Request, body: dict = Body(...)):
-    """Sparar känslighet och tröskel. Alla andra värden (t.ex. detekteringsområdet) skickas tillbaka oförändrade."""
-    require(request)
-    cam = cam_or_404(name)
-    try:
-        sens, thr = int(body.get("sensitivity")), int(body.get("threshold"))
-    except (TypeError, ValueError):
-        raise err(400, "Ogiltiga värden")
+async def save_motion(cam, sens, thr):
+    """Sparar känslighet och tröskel. Allt annat (t.ex. detekteringsområdet) skickas tillbaka oförändrat."""
     try:
         cam_id = await _ss_id(cam)
         current = find_md_params(await ss.motion_get(cam_id))
@@ -715,14 +712,13 @@ async def motion_put(name: str, request: Request, body: dict = Body(...)):
                     params[k] = v["value"]
                 continue
             params[k] = v
-        params["sensitivity"] = max(view["min"], min(view["max"], sens))
-        params["threshold"] = max(view["min"], min(view["max"], thr))
+        params["sensitivity"] = max(view["min"], min(view["max"], int(sens)))
+        params["threshold"] = max(view["min"], min(view["max"], int(thr)))
         try:
             await ss.motion_save(cam_id, params)
         except SynologyError as e:
             if e.code != 101:
                 raise
-            # ogiltiga parametrar: försök igen med de grundläggande fälten
             await ss.motion_save(cam_id, {k: params[k] for k in (*MD_MINIMAL, "sensitivity", "threshold")
                                           if k in params})
         after = find_md_params(await ss.motion_get(cam_id)) or {}
@@ -730,10 +726,100 @@ async def motion_put(name: str, request: Request, body: dict = Body(...)):
         raise
     except Exception as e:
         raise _ss_err(e, "motion")
+    _md_cache.pop(cam["name"], None)
     got_s, got_t = _val(after.get("sensitivity")), _val(after.get("threshold"))
     if got_s != params["sensitivity"] or got_t != params["threshold"]:
         raise err(502, "Surveillance Station sparade inte värdena (har nu {s}/{t})", s=got_s, t=got_t)
+    return got_s, got_t
+
+
+@app.put("/api/cameras/{name}/motion")
+async def motion_put(name: str, request: Request, body: dict = Body(...)):
+    require(request)
+    cam = cam_or_404(name)
+    try:
+        sens, thr = int(body.get("sensitivity")), int(body.get("threshold"))
+    except (TypeError, ValueError):
+        raise err(400, "Ogiltiga värden")
+    got_s, got_t = await save_motion(cam, sens, thr)
     return {"ok": True, "sensitivity": got_s, "threshold": got_t}
+
+
+# ------------------------------------------------------------------ kalibrering
+
+_md_cache = {}  # kamera -> (tid, värden) så att kalibreringen inte frågar Surveillance Station hela tiden
+
+
+async def md_view_for(camera):
+    hit = _md_cache.get(camera)
+    if hit and time.time() - hit[0] < 300:
+        return hit[1]
+    cam = cam_or_404(camera)
+    raw = find_md_params(await ss.motion_get(await _ss_id(cam))) or {}
+    v = _md_view(raw) if raw else {"sensitivity": None, "threshold": None, "min": 1, "max": 99}
+    out = (v["sensitivity"], v["threshold"], v["min"], v["max"], raw.get("region"))
+    _md_cache[camera] = (time.time(), out)
+    return out
+
+
+calib = CalibrationManager(config, engine, md_view_for)
+
+
+async def _on_trigger(name, cam):
+    try:
+        await calib.on_reaction(name, cam)
+    except Exception as e:
+        log.debug("Kalibrering: %s", e)
+engine.on_trigger = _on_trigger
+
+
+@app.get("/api/cameras/{name}/calibration")
+async def calibration_get(name: str, request: Request):
+    require(request)
+    cam_or_404(name)
+    return {"run": await calib.report(name)}
+
+
+@app.post("/api/cameras/{name}/calibration")
+async def calibration_post(name: str, request: Request, body: dict = Body(...)):
+    require(request)
+    cam = cam_or_404(name)
+    action = (body or {}).get("action")
+    try:
+        if action == "start":
+            await calib.start(name, body.get("hours", 24))
+        elif action == "stop":
+            await calib.stop(name)
+        elif action == "walk":
+            if not calib.running(name):
+                raise err(400, "Ingen kalibrering pågår")
+            calib.walk(name)
+        elif action == "clear":
+            calib.clear(name)
+        elif action in ("apply", "undo"):
+            run = await calib.report(name)
+            if not run or run["status"] == "running":
+                raise err(400, "Ingen färdig kalibrering")
+            if action == "apply":
+                p = (run["report"] or {}).get("proposal")
+                if not p:
+                    raise err(400, "Inget förslag")
+                await save_motion(cam, p["sensitivity"], p["threshold"])
+                calib.set_applied(name, {"sensitivity": p["sensitivity"], "threshold": p["threshold"],
+                                         "ts": time.time()})
+            else:
+                b = run["before"] or {}
+                await save_motion(cam, b["sensitivity"], b["threshold"])
+                calib.set_applied(name, None)
+        else:
+            raise err(400, "Okänd åtgärd")
+    except ValueError:
+        raise err(409, "En kalibrering pågår redan")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _ss_err(e, "motion")
+    return {"run": await calib.report(name)}
 
 
 # ------------------------------------------------------------------ action rules i Surveillance Station

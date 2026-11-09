@@ -33,6 +33,7 @@ class Engine:
         self.state = {}
         self.recent = []  # senaste meddelanden för statussidan
         self.modes = None  # ModeManager, sätts i main
+        self.on_trigger = None  # anropas vid varje reaktion (kalibreringen)
 
     def _st(self, name):
         return self.state.setdefault(name, CameraState())
@@ -79,6 +80,8 @@ class Engine:
         entry = {"ts": time.time(), "result": None, "outcome": None}
         st.triggers.append(entry)
         entry["result"] = self._check(cam, st)
+        if self.on_trigger:
+            asyncio.create_task(self.on_trigger(name, cam))
         if entry["result"] == "accepted":
             st.busy = True
             self._note(name, tr("Rörelse: analyserar"))

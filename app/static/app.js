@@ -132,6 +132,24 @@ const EN = {
   'Byt läge när Home Mode slås på eller av': 'Change mode when Home Mode is turned on or off', 'Home Mode på →': 'Home Mode on →', 'Home Mode av →': 'Home Mode off →',
   'Schema': 'Schedule', 'Byt läge vid en viss tid, t.ex. Natt 23:00 och Hemma 06:00.': 'Change mode at a certain time, e.g. Night 23:00 and Home 06:00.', 'Inget schema.': 'No schedule.',
   'Ny tid': 'New time', 'Byt läge via webhook': 'Change mode via webhook', 'Spara lägen': 'Save modes',
+  'Kalibrering': 'Calibration',
+  'SynoArgus mäter under en period hur kameran beter sig och föreslår känslighet och tröskel. Var 30:e sekund tas två bilder med en sekunds mellanrum: SynoArgus mäter själv hur mycket som ändras i detekteringsområdet, och AI:n avgör om något av intresse syns. Varje reaktion från Surveillance Station loggas också. Inga bilder sparas, bara statistik. Larm fungerar som vanligt under tiden.': 'SynoArgus measures over a period how the camera behaves and proposes sensitivity and threshold. Every 30 seconds two images are taken one second apart: SynoArgus measures how much changes in the detection area, and the AI decides whether anything of interest is visible. Every reaction from Surveillance Station is logged too. No images are stored, only statistics. Alarms work as usual meanwhile.',
+  'Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus.': 'Run it during a normal day and walk past the camera 2–3 times (the I am walking past now button). An empty house only gives noise.',
+  'Starta kalibrering': 'Start calibration', 'Pågår: {a} – {b}': 'Running: {a} – {b}', '(analysen är långsam – bildparen glesas ut)': '(analysis is slow – image pairs are spaced out)',
+  'Gå förbi kameran nu – mäter tätare i {s} s till': 'Walk past the camera now – measuring more often for {s} s', 'Jag går förbi nu': 'I am walking past now', 'Avbryt': 'Cancel',
+  'Preliminärt resultat hittills:': 'Preliminary result so far:', 'Klar': 'Finished', 'Avbruten': 'Cancelled',
+  'För lite data – låt kalibreringen gå längre eller gå förbi kameran några gånger. Krävs: minst {r} reaktioner eller {n} bildpar, och {t} med mål i rörelse för ett fullständigt förslag.': 'Not enough data – let the calibration run longer or walk past the camera a few times. Required: at least {r} reactions or {n} image pairs, and {t} with a moving target for a full proposal.',
+  'Inget förslag – värdena från Surveillance Station saknas.': 'No proposal – the values from Surveillance Station are missing.', 'Nuvarande värden ser bra ut – inget att ändra.': 'The current values look good – nothing to change.',
+  'Förslag': 'Proposal', 'Känslighet': 'Sensitivity', 'Tröskel': 'Threshold', 'Uppskattat: brus {a} → {b}, mål som reagerar {c} → {d}.': 'Estimated: noise {a} → {b}, targets that react {c} → {d}.',
+  'Inga mål i rörelse uppmättes – förslaget bygger bara på brus och går därför bara ett steg mot mindre känsligt.': 'No moving targets were measured – the proposal is based on noise only and therefore goes just one step towards less sensitive.',
+  'Få mål uppmätta – förslaget är osäkert.': 'Few targets measured – the proposal is uncertain.',
+  'Dag och natt drar åt olika håll. Surveillance Station har bara ett värde för hela dygnet – förslaget väger samman båda.': 'Day and night pull in different directions. Surveillance Station has a single value for the whole day – the proposal weighs both.',
+  'Uppskattning: Synology beskriver inte sin algoritm. Kontrollera med rörelsemätaren efteråt och kör gärna en ny kalibrering.': 'Estimate: Synology does not document its algorithm. Check with the motion meter afterwards and feel free to run another calibration.',
+  'Använt {d}': 'Applied {d}', 'Ångra': 'Undo', 'Använd förslaget': 'Apply the proposal', 'reaktioner': 'reactions', 'med mål': 'with target', 'brus': 'noise',
+  'missade mål': 'missed targets', 'bildpar': 'image pairs', 'mål i rörelse': 'moving targets', 'Reaktioner per timme': 'Reactions per hour',
+  'Bildpar': 'Image pairs', 'Mål': 'Targets', 'Reaktioner': 'Reactions', 'Brus': 'Noise', 'Dag': 'Day', 'Ny kalibrering': 'New calibration',
+  'Avbryta kalibreringen? Rapporten byggs på det som hunnit samlas in.': 'Cancel the calibration? The report is built from what has been collected.',
+  'Spara de föreslagna värdena i Surveillance Station?': 'Save the proposed values in Surveillance Station?', 'Tidigare värden återställda': 'Previous values restored',
   // status
   'Hämtar…': 'Loading…', 'Modell <b>{m}</b> på <b>{d}</b> ({s} px)': 'Model <b>{m}</b> on <b>{d}</b> ({s} px)', 'grafikkretsen': 'the GPU', 'processorn': 'the CPU',
   ' · senaste analys {ms} ms': ' · last analysis {ms} ms', 'Tillgängliga modeller: {m}': 'Available models: {m}', 'inga': 'none',
@@ -481,6 +499,7 @@ function renderCamEditor(cam) {
     </div>
     <div id="mList" class="small"></div>
   </div>
+  <div class="panel" id="calPanel"><h3>${t('Kalibrering')}</h3><div id="calBody" class="muted small">${t('Hämtar…')}</div></div>
   <div class="row"><button class="btn primary" id="saveCam">${t('Spara')}</button><button class="btn danger" id="delCam">${t('Ta bort kameran')}</button></div>`;
 
   const toggleType = x => { cam.types = cam.types.includes(x) ? cam.types.filter(y => y !== x) : [...cam.types, x]; };
@@ -671,6 +690,34 @@ function renderCamEditor(cam) {
   };
   loadMd();
 
+  // ---- kalibrering
+  let calTimer = null;
+  const stopCal = () => { if (calTimer) { clearTimeout(calTimer); calTimer = null; } };
+  stoppers.add(stopCal);
+  const loadCal = async () => {
+    stopCal();
+    const body = $('#calBody'); if (!body) return;
+    let r;
+    try { r = (await api(`/api/cameras/${enc}/calibration`)).run; }
+    catch (e) { body.innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
+    body.className = 'small';
+    body.innerHTML = calHtml(r);
+    body.onclick = async e => {
+      const a = e.target.dataset.cal; if (!a) return;
+      if (a === 'stop' && !confirm(t('Avbryta kalibreringen? Rapporten byggs på det som hunnit samlas in.'))) return;
+      if (a === 'apply' && !confirm(t('Spara de föreslagna värdena i Surveillance Station?'))) return;
+      e.target.disabled = true;
+      try {
+        await api(`/api/cameras/${enc}/calibration`, { method: 'POST', body: { action: a, hours: Number(($('#calHours') || {}).value || 24) } });
+        if (a === 'apply') toast(t('Sparat i Surveillance Station')); if (a === 'undo') toast(t('Tidigare värden återställda'));
+        if (a === 'apply' || a === 'undo') loadMd();
+      } catch (err) { toast(err.message, true); }
+      loadCal();
+    };
+    if (r && r.status === 'running') calTimer = setTimeout(loadCal, 15000);
+  };
+  loadCal();
+
   // ---- rörelsemätare
   let meter = null;
   const resLabel = x => {
@@ -742,6 +789,66 @@ function notifierWarnings(n) {
     if (targets.length && miss.length === targets.length) out.push(t('I läget {m} larmar ingen av kamerorna {c}.', { m: modeName(m), c: miss.join(', ') }));
   }
   return out.map(x => `<p class="warnbox">⚠ ${esc(x)}</p>`).join('');
+}
+
+/* ---------------------------------------------------------------- kalibrering */
+const pct = v => v == null ? '–' : Math.round(v * 100) + ' %';
+function calHtml(r) {
+  if (!r) return `
+    <p class="muted" style="margin-top:0">${t('SynoArgus mäter under en period hur kameran beter sig och föreslår känslighet och tröskel. Var 30:e sekund tas två bilder med en sekunds mellanrum: SynoArgus mäter själv hur mycket som ändras i detekteringsområdet, och AI:n avgör om något av intresse syns. Varje reaktion från Surveillance Station loggas också. Inga bilder sparas, bara statistik. Larm fungerar som vanligt under tiden.')}</p>
+    <p class="muted">${t('Kör under ett vanligt dygn och gå gärna förbi kameran 2–3 gånger (knappen Jag går förbi nu). Ett tomt hus ger bara brus.')}</p>
+    <div class="row"><select id="calHours" style="width:auto">${[12, 24, 48, 72].map(h => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${h} h</option>`).join('')}</select>
+      <button class="btn primary" data-cal="start">${t('Starta kalibrering')}</button></div>`;
+  const rep = r.report || {};
+  const now = Date.now() / 1000;
+  let head = '';
+  if (r.status === 'running') {
+    const prog = Math.min(1, (now - r.started) / (r.ends - r.started));
+    const walking = r.walk_until && r.walk_until > now;
+    head = `
+      <div class="progress"><div style="width:${Math.round(prog * 100)}%"></div></div>
+      <p>${t('Pågår: {a} – {b}', { a: fmtTime(r.started), b: fmtTime(r.ends) })}${r.slow ? ` <span class="warn">${t('(analysen är långsam – bildparen glesas ut)')}</span>` : ''}</p>
+      <div class="row">${walking ? `<span class="tag ok">${t('Gå förbi kameran nu – mäter tätare i {s} s till', { s: Math.round(r.walk_until - now) })}</span>` : `<button class="btn" data-cal="walk">🚶 ${t('Jag går förbi nu')}</button>`}
+        <button class="btn danger" data-cal="stop">${t('Avbryt')}</button></div>
+      <p class="muted" style="margin-bottom:4px">${t('Preliminärt resultat hittills:')}</p>`;
+  } else {
+    head = `<p><b>${r.status === 'done' ? t('Klar') : t('Avbruten')}</b> · ${fmtTime(r.started)} – ${fmtTime(rep.ends && rep.ends < now ? rep.ends : now)}</p>`;
+  }
+  const maxH = Math.max(1, ...(rep.hours || [0]));
+  const bars = (rep.hours || []).map((v, h) => `<div class="hbar" title="${String(h).padStart(2, '0')}:00 – ${v}"><div style="height:${Math.round(v / maxH * 100)}%"></div><span>${h % 6 === 0 ? h : ''}</span></div>`).join('');
+  const dn = (lab, x) => x ? `<tr><td>${lab}</td><td>${x.pairs}</td><td>${x.targets}</td><td>${x.reactions}</td><td>${x.reactions ? Math.round(x.noise_reactions / x.reactions * 100) + ' %' : '–'}</td></tr>` : '';
+  const p = rep.proposal;
+  let prop = '';
+  if (!rep.enough) prop = `<p class="warnbox">⚠ ${t('För lite data – låt kalibreringen gå längre eller gå förbi kameran några gånger. Krävs: minst {r} reaktioner eller {n} bildpar, och {t} med mål i rörelse för ett fullständigt förslag.', { r: rep.limits?.min_reactions, n: rep.limits?.min_noise, t: rep.limits?.min_targets })}</p>`;
+  else if (!p) prop = `<p class="muted">${t('Inget förslag – värdena från Surveillance Station saknas.')}</p>`;
+  else if (p.unchanged) prop = `<p class="okc">✓ ${t('Nuvarande värden ser bra ut – inget att ändra.')}</p>`;
+  else {
+    const cur = rep.current;
+    prop = `
+      <div class="proposal">
+        <div><span class="muted">${t('Förslag')}</span><b>${t('Känslighet')} ${cur.sensitivity} → ${p.sensitivity} · ${t('Tröskel')} ${cur.threshold} → ${p.threshold}</b></div>
+        <div class="muted">${t('Uppskattat: brus {a} → {b}, mål som reagerar {c} → {d}.', { a: pct(p.noise_now), b: pct(p.noise), c: pct(p.recall_now), d: pct(p.recall) })}</div>
+        ${p.only_noise ? `<p class="warnbox">⚠ ${t('Inga mål i rörelse uppmättes – förslaget bygger bara på brus och går därför bara ett steg mot mindre känsligt.')}</p>` : ''}
+        ${!rep.full && !p.only_noise ? `<p class="warnbox">⚠ ${t('Få mål uppmätta – förslaget är osäkert.')}</p>` : ''}
+        ${rep.day_night_conflict ? `<p class="warnbox">⚠ ${t('Dag och natt drar åt olika håll. Surveillance Station har bara ett värde för hela dygnet – förslaget väger samman båda.')}</p>` : ''}
+        <p class="muted small" style="margin:6px 0 0">${t('Uppskattning: Synology beskriver inte sin algoritm. Kontrollera med rörelsemätaren efteråt och kör gärna en ny kalibrering.')}</p>
+        ${r.status !== 'running' ? `<div class="row" style="margin-top:8px">${r.applied ? `<span class="tag ok">${t('Använt {d}', { d: fmtTime(r.applied.ts) })}</span><button class="btn" data-cal="undo">${t('Ångra')}</button>` : `<button class="btn primary" data-cal="apply">${t('Använd förslaget')}</button>`}</div>` : ''}
+      </div>`;
+  }
+  return head + `
+    <div class="calstats">
+      <div><b>${rep.reactions ?? 0}</b><span>${t('reaktioner')}</span></div>
+      <div><b>${rep.reactions_target ?? 0}</b><span>${t('med mål')}</span></div>
+      <div><b>${pct(rep.noise_share)}</b><span>${t('brus')}</span></div>
+      <div><b>${rep.missed ?? 0}</b><span>${t('missade mål')}</span></div>
+      <div><b>${rep.pairs ?? 0}</b><span>${t('bildpar')}</span></div>
+      <div><b>${rep.target_pairs ?? 0}</b><span>${t('mål i rörelse')}</span></div>
+    </div>
+    <div class="muted small">${t('Reaktioner per timme')}</div>
+    <div class="hbars">${bars}</div>
+    <table class="small"><tr><th></th><th>${t('Bildpar')}</th><th>${t('Mål')}</th><th>${t('Reaktioner')}</th><th>${t('Brus')}</th></tr>${dn(t('Dag'), rep.day)}${dn(t('Natt'), rep.night)}</table>
+    ${prop}
+    ${r.status !== 'running' ? `<div class="row" style="margin-top:10px"><button class="btn" data-cal="clear">${t('Ny kalibrering')}</button></div>` : ''}`;
 }
 
 /* ---------------------------------------------------------------- notifierare */

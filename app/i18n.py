@@ -75,6 +75,8 @@ EN = {
     "kameran avstängd": "camera disabled", "läge {m}": "mode {m}", "tyst period": "quiet period",
     "för tätt": "too frequent", "upptagen": "busy",
     "Okänt läge": "Unknown mode",
+    "Ingen färdig kalibrering": "No finished calibration", "Ingen kalibrering pågår": "No calibration is running", "Inget förslag": "No proposal",
+    "Okänd åtgärd": "Unknown action", "En kalibrering pågår redan": "A calibration is already running",
 }
 
 

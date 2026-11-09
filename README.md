@@ -15,7 +15,7 @@ with the picture.
 - **Modes** (Home / Night / Away or your own): choose per camera and per notifier when they are active; switch by hand, schedule, webhook or Surveillance Station Home Mode
 - Notifications: **Pushbullet, Telegram, ntfy, email, webhook, MQTT** – with placeholders in texts and URLs
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,
-  motion detection tuning, backup/restore, update check
+  motion detection tuning, **calibration** (measures a day and proposes sensitivity/threshold), backup/restore, update check
 - Login with your DSM account or Synology SSO (OpenID Connect)
 
 > SynoArgus is an independent project and is not affiliated with, endorsed by or supported by Synology Inc.
@@ -190,6 +190,31 @@ flashes every time Surveillance Station triggers SynoArgus and shows triggers pe
 This uses the Surveillance Station Web API (`SYNO.SurveillanceStation.Camera.Event`). It only works when the camera's detection
 source is *By Surveillance Station*, and the SynoArgus DSM user needs the **All-Object Manager** (or Administrator)
 profile. All other motion settings (detection area etc.) are sent back unchanged.
+
+### Calibration
+
+Under each camera, **Calibration** measures how the camera behaves over 12–72 hours (default 24) and proposes
+sensitivity and threshold for Surveillance Station.
+
+- Every 30 seconds SynoArgus takes **two images one second apart**, measures itself how much of the camera's
+  detection area changed (independent of Surveillance Station's own logic) and lets the AI decide whether one of the
+  camera's object types is visible and moving. This gives two distributions: *noise* and *moving target*.
+- Every **reaction** from Surveillance Station is logged too, with the AI result – also during quiet periods and in
+  modes where the camera does not alarm. A moving target with no reaction nearby counts as *missed*.
+- **I am walking past now** measures every 5 seconds for 2 minutes and marks the data as a test walk.
+- **No images are stored**, only numbers. The raw data is deleted when the report is ready. Alarms work as usual;
+  normal alarms always go first and image pairs are spaced out if the analysis is slow.
+- The report shows reactions, share of noise, missed targets, reactions per hour and day/night separately.
+- The **proposal** changes each value by at most ±10 in steps of 5, never reduces the share of targets that react,
+  and requires enough data (at least 20 reactions or 30 image pairs, and 2 moving targets for a full proposal).
+  It is **never applied automatically**: *Apply the proposal* saves it in Surveillance Station, *Undo* restores the
+  previous values.
+- Best results: run it during a normal day and walk past the camera 2–3 times. An empty house only gives noise,
+  and then the proposal can only make the camera less sensitive.
+
+> The proposal is an estimate. Synology does not document its algorithm, so SynoArgus maps sensitivity to the pixel
+> change that counts (`4 + (99 − S) × 60/98` of 255) and threshold to the share of the detection area (`T %`).
+> Check the result with the motion meter and run another calibration if needed.
 
 ## 6. Notifications
 

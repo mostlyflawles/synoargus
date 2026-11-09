@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 (build 7) – 2026-11-09
+- **Modes** (Home / Night / Away, renameable, add your own): per camera *Alarms in mode*, per notifier *Only in mode*. Mode pill in the header, mode buttons under Status.
+- Mode changes by hand, schedule, webhook (`/api/mode`) or by following Surveillance Station Home Mode – last change wins.
+- Action Rules created by SynoArgus are active in Home Mode; *Fix the rule* turns it on for existing rules.
+- Yellow warning when a notifier filters on a type (or mode) that its cameras never alarm for.
+- Every call from Surveillance Station is logged under Status (also ignored ones, with the reason).
+- Wording: "reactions" instead of "triggers" in the motion meter and texts.
+
 ## 0.4.2 (build 6) – 2026-11-09
 - Fixed (important): *Create rule* overwrote an existing Action Rule (Surveillance Station uses `ruleId`, which was copied from the template). New rules are now built from scratch: motion detected on the camera → webhook to SynoArgus, all week. Safety check: exactly one new rule, no existing rule changed.
 - *Fix the rule* for SynoArgus rules not triggered by motion on the right camera.

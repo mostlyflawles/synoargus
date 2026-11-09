@@ -209,6 +209,9 @@ class SurveillanceStation:
         return await self._try_versions("SYNO.SurveillanceStation.ActionRule", "List", ("3", "2", "1"),
                                         {"start": "0", "limit": "1000"})
 
+    async def homemode_get(self):
+        return await self._try_versions("SYNO.SurveillanceStation.HomeMode", "GetInfo", ("1",), {})
+
     async def action_rule_save(self, params):
         return await self._try_versions("SYNO.SurveillanceStation.ActionRule", "Save", ("3", "2", "1"),
                                         _flat(params))
@@ -228,6 +231,19 @@ def _flat(params):
         else:
             out[k] = str(v)
     return out
+
+
+def find_homemode(data):
+    """Home Mode på/av ur svaret från HomeMode.GetInfo (None om okänt)."""
+    if isinstance(data, dict):
+        for k in ("on", "homeModeOn", "home_mode_on", "isOn"):
+            if isinstance(data.get(k), bool):
+                return data[k]
+        for v in data.values():
+            hit = find_homemode(v)
+            if hit is not None:
+                return hit
+    return None
 
 
 def find_rules(data):

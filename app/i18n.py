@@ -68,6 +68,13 @@ EN = {
     "Larm: {types}": "Alarm: {types}",
     "Fel: {e}": "Error: {e}",
     "Testkamera": "Test camera",
+    "manuellt": "manually", "schema": "schedule",
+    "Läge: {a} → {b} ({src})": "Mode: {a} → {b} ({src})",
+    "Rörelse: analyserar": "Motion: analysing",
+    "Rörelse: ignoreras ({why})": "Motion: ignored ({why})",
+    "kameran avstängd": "camera disabled", "läge {m}": "mode {m}", "tyst period": "quiet period",
+    "för tätt": "too frequent", "upptagen": "busy",
+    "Okänt läge": "Unknown mode",
 }
 
 

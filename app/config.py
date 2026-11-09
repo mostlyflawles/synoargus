@@ -89,6 +89,13 @@ DEFAULTS = {
         "save_empty": False,    # spara även analyser utan träff
     },
     "public_url": "",           # adress till SynoArgus, används i länkar i larm
+    # Lägen: namn "" = standardnamn (Hemma/Natt/Borta) på valt språk
+    "modes": [{"id": "home", "name": ""}, {"id": "night", "name": ""}, {"id": "away", "name": ""}],
+    "mode": {"current": "away", "source": "default", "since": 0},
+    "mode_auto": {
+        "homemode": {"enabled": False, "on": "home", "off": "away"},  # följ Home Mode i Surveillance Station
+        "schedule": [],             # [{"time": "23:00", "days": [0..6], "mode": "night"}] (0 = måndag)
+    },
     "cameras": {},              # namn -> kamerainställningar, se camera_defaults()
     "notifiers": [],            # lista med notifierare
 }
@@ -108,6 +115,7 @@ def camera_defaults(name, ss_id=None):
         "max_snapshots": None,
         "wait_ms": 0,
         "zones": [],            # [{x1,y1,x2,y2 (0-1), mode: contains|intersect}]
+        "modes": [],            # lägen där kameran larmar, tom = alla
     }
 
 

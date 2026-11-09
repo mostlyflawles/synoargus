@@ -125,3 +125,11 @@ label.btn { font: inherit; border: 1px solid var(--line); background: var(--pane
 .arbox details { flex-basis: 100%; }
 .rawbox { min-width: 0; max-width: 100%; }
 pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+.modepill { font: inherit; font-size: 12.5px; font-weight: 600; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.1); color: #fff; border-radius: 99px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
+.warn { color: #b7791f; }
+.warnbox { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, #e3a008 16%, transparent); color: #8a5a00; border: 1px solid color-mix(in srgb, #e3a008 45%, transparent); }
+@media (prefers-color-scheme: dark) { .warnbox { color: #f3c969; } .warn { color: #f3c969; } }
+.modelist .row, .schedlist .row { margin-bottom: 6px; }
+.sched .chips .chip { padding: 4px 8px; font-size: 12px; }
+.modebtns .chip { font-size: 14px; padding: 7px 14px; }
+@media (max-width: 420px) { .who #whoName { display: none; } }

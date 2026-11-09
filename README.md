@@ -12,6 +12,7 @@ with the picture.
 - Built-in model: **YOLOX** (Apache-2.0). Optionally bring your own Ultralytics model (YOLO26, YOLO11 …)
 - Uses Intel OpenVINO, including the integrated GPU when available
 - Per camera: object types, minimum confidence, minimum size, exclusion zones, quiet period, multiple snapshots
+- **Modes** (Home / Night / Away or your own): choose per camera and per notifier when they are active; switch by hand, schedule, webhook or Surveillance Station Home Mode
 - Notifications: **Pushbullet, Telegram, ntfy, email, webhook, MQTT** – with placeholders in texts and URLs
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,
   motion detection tuning, backup/restore, update check
@@ -39,6 +40,7 @@ Issues and pull requests are welcome.
 7. [Configure cameras](#5-configure-cameras)
 8. [Notifications](#6-notifications)
 9. [Control cameras via webhook](#7-control-cameras-via-webhook)
+   - [Modes](#modes)
 10. [Login with Synology SSO](#8-login-with-synology-sso-optional)
 11. [Own models (YOLO26 etc.)](#9-own-models-yolo26-etc)
 12. [Updating](#10-updating)
@@ -148,10 +150,13 @@ Do this **for each camera**:
    - Action: device **Webhook**, URL = the copied address, method **GET**, times 1
    - Press **Send test**. A line appears in the log under **Status** in SynoArgus.
 3. Make Surveillance Station's motion detection fairly sensitive – SynoArgus filters out the noise.
+   Every call from Surveillance Station is shown under Status > Log (also ignored ones: quiet period, mode, disabled).
    See [motion detection tuning](#motion-detection-tuning).
 
 **Home Mode:** in Surveillance Station > Home Mode > Settings > Action Rule, a rule that is *checked* stays active while
-Home Mode is on; an unchecked rule is disabled while Home Mode is on. When Home Mode is off, the rule's own schedule applies.
+Home Mode is on; an unchecked rule is disabled while Home Mode is on. SynoArgus rules should **always be active**
+(rules created by SynoArgus are) – use [modes](#modes) in SynoArgus to decide when to alarm instead. *Fix the rule*
+turns this on for existing rules.
 
 ## 5. Configure cameras
 
@@ -254,6 +259,28 @@ GET http://<NAS-IP>:8686/api/control?token=<token>&camera=Hallway&action=on
 - The response is JSON with the current state of the affected cameras.
 
 Settings > *Control cameras (webhook)* builds the URL (with your token) for you.
+
+### Modes
+
+SynoArgus has a current **mode** – by default *Home*, *Night* and *Away*. You can rename them and add your own
+under Settings > Modes.
+
+- **Per camera** (Cameras > *Alarms in mode*): in which modes the camera alarms. None selected = all modes.
+- **Per notifier** (Notifiers > *Only in mode*): in which modes it sends. None selected = all modes.
+- When a camera is not active in the current mode, Surveillance Station's call is ignored without analysis
+  (shown as *mode … – no alarm* in the motion meter and the log).
+
+The mode is changed by whatever happens last:
+
+| Source | How |
+|---|---|
+| Manually | Click the mode pill at the top, or Status > Mode |
+| Schedule | Settings > Modes > Schedule, e.g. *Night* at 23:00 Mon–Fri and *Home* at 06:00 |
+| Webhook | `GET /api/mode?token=<token>&mode=night` (id or name; `mode=status` only returns the current mode) – e.g. from Homey presence |
+| Home Mode | Settings > Modes > *Follow Home Mode*: e.g. Home Mode on → *Home*, off → *Away* (checked every 20 s) |
+
+Example: outdoor cameras alarm in all modes, the hall only at *Night* and *Away*; Telegram sends only at *Night* and
+*Away*, while the Homey webhook gets everything (e.g. to turn on lights).
 
 ## 8. Login with Synology SSO (optional)
 

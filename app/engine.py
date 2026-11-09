@@ -32,6 +32,7 @@ class Engine:
         self.detector = detector
         self.state = {}
         self.recent = []  # senaste meddelanden för statussidan
+        self.modes = None  # ModeManager, sätts i main
 
     def _st(self, name):
         return self.state.setdefault(name, CameraState())
@@ -80,12 +81,23 @@ class Engine:
         entry["result"] = self._check(cam, st)
         if entry["result"] == "accepted":
             st.busy = True
+            self._note(name, tr("Rörelse: analyserar"))
             asyncio.create_task(self._process(cam, st, entry))
+        else:
+            if entry["result"] == "mode" and self.modes:
+                entry["mode"] = self.modes.name(self.modes.current())
+            why = {"disabled": tr("kameran avstängd"), "cooldown": tr("tyst period"), "delay": tr("för tätt"),
+                   "busy": tr("upptagen"), "mode": tr("läge {m}", m=entry.get("mode", ""))}.get(entry["result"],
+                                                                                              entry["result"])
+            self._note(name, tr("Rörelse: ignoreras ({why})", why=why))
         return entry["result"]
 
     def _check(self, cam, st):
         if not cam.get("enabled", True):
             return "disabled"
+        modes = cam.get("modes") or []
+        if modes and self.modes and self.modes.current() not in modes:
+            return "mode"
         now = time.time()
         if st.busy:
             return "busy"
@@ -161,8 +173,9 @@ class Engine:
 
     async def notify(self, name, types, dets, jpeg, event_id=None, rel=None, only=None):
         event = self.build_event(name, types, dets, event_id, rel)
+        mode = self.modes.current() if self.modes else None
         targets = [n for n in self.cfg.get("notifiers") or []
-                   if (only and n["id"] == only) or (not only and notifiers.applies(n, name, types))]
+                   if (only and n["id"] == only) or (not only and notifiers.applies(n, name, types, mode))]
         results = await asyncio.gather(*(notifiers.send(n, event, jpeg) for n in targets))
         out = [{"id": n["id"], "name": n.get("name") or n["type"], "ok": ok, "error": err}
                for n, (ok, err) in zip(targets, results)]

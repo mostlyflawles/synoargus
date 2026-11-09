@@ -68,7 +68,7 @@ def render(template, event, url=False):
 
 def new_notifier(kind):
     base = {"id": uuid.uuid4().hex[:8], "type": kind, "name": "", "enabled": True,
-            "cameras": [], "types": []}
+            "cameras": [], "types": [], "modes": []}
     if kind == "pushbullet":
         base.update({"api_key": "", "device_iden": "", "send_image": True, "title": "", "body": ""})
     elif kind == "webhook":
@@ -88,8 +88,10 @@ def new_notifier(kind):
     return base
 
 
-def applies(n, camera, types):
+def applies(n, camera, types, mode=None):
     if not n.get("enabled", True):
+        return False
+    if n.get("modes") and mode not in n["modes"]:
         return False
     if n.get("cameras") and camera not in n["cameras"]:
         return False

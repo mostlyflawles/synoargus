@@ -24,6 +24,7 @@ from .detector import Detector
 from .engine import Engine
 from .filters import draw
 from .i18n import tr
+from .modes import ModeManager
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
 
@@ -38,6 +39,8 @@ app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)
 ss = SurveillanceStation(config)
 detector = Detector(MODEL_DIR, USER_MODEL_DIR)
 engine = Engine(config, ss, detector)
+modes = ModeManager(config, ss, engine._note)
+engine.modes = modes
 _fails = {}  # ip -> [tidpunkter för misslyckade inloggningar]
 _update = {"checked": 0, "data": None}
 
@@ -218,6 +221,7 @@ async def startup():
 
     asyncio.create_task(load())
     asyncio.create_task(housekeeping())
+    asyncio.create_task(modes.loop())
     asyncio.create_task(update_loop())
 
 
@@ -270,6 +274,20 @@ async def control(token: str = "", camera: str = "all", action: str = "status"):
     return {"cameras": {n: bool(c.get("enabled", True)) for n, c in cams.items() if n in targets}}
 
 
+@app.api_route("/api/mode", methods=["GET", "POST"])
+async def mode_webhook(token: str = "", mode: str = "status"):
+    """Byt läge från t.ex. Homey: ?mode=<id eller namn>|status"""
+    check_token(token)
+    if mode.lower() != "status":
+        target = modes.resolve(mode)
+        if not target:
+            raise err(404, "Okänt läge")
+        modes.set(target, "webhook")
+    i = modes.info()
+    return {"mode": i["current"], "name": i["name"], "modes": [{"id": m["id"], "name": modes.name(m["id"])}
+                                                              for m in modes.modes()]}
+
+
 # ------------------------------------------------------------------ installation och inloggning
 
 @app.get("/api/state")
@@ -283,6 +301,7 @@ async def state(request: Request):
         "setup_done": config.get("setup_done"),
         "setup_allowed": not config.get("setup_done") and auth.is_private(client_ip(request)),
         "logged_in": bool(ok), "user": user if ok else None,
+        "mode": modes.info() if ok else None,
         "dsm_login": a.get("dsm_login", True), "unlocked": unlocked(),
         "sso": bool(a["sso"].get("enabled") and a["sso"].get("issuer") and a["sso"].get("client_id")),
     }
@@ -419,6 +438,7 @@ async def get_config(request: Request):
         "config": masked_config(),
         "types": {"common": COMMON_TYPES, "all": COCO_TYPES, "names": TYPE_NAMES_SV},
         "models": detector.status()["available"],
+        "mode": modes.info(),
         "trigger_base": str(request.base_url).rstrip("/"),
     }
 
@@ -437,7 +457,8 @@ def validate_auth(request, a):
 async def put_settings(request: Request, body: dict = Body(...)):
     require(request)
     old = config.get()
-    allowed = ("synology", "auth", "detector", "defaults", "storage", "public_url", "language", "timezone")
+    allowed = ("synology", "auth", "detector", "defaults", "storage", "public_url", "language", "timezone",
+               "modes", "mode_auto")
     new = unmask({k: v for k, v in body.items() if k in allowed}, old)
     if "auth" in new:
         validate_auth(request, new["auth"])
@@ -448,6 +469,16 @@ async def put_settings(request: Request, body: dict = Body(...)):
             raise err(400, "Ogiltig tidszon: {tz}", tz=new["timezone"])
     if new.get("language") not in (None, "sv", "en"):
         new.pop("language")
+    if "modes" in new:
+        clean, seen = [], set()
+        for m in new["modes"] or []:
+            mid = str(m.get("id") or "").strip()
+            if mid and mid not in seen:
+                seen.add(mid)
+                clean.append({"id": mid, "name": str(m.get("name") or "").strip()})
+        if not clean:
+            raise err(400, "Okänt läge")
+        new["modes"] = clean
 
     def apply(d):
         for k, v in new.items():
@@ -456,6 +487,25 @@ async def put_settings(request: Request, body: dict = Body(...)):
             else:
                 d[k] = v
     config.update(apply)
+    if "modes" in new:
+        ids = {m["id"] for m in new["modes"]}
+
+        def cleanup(d):  # ta bort borttagna lägen från kameror, notifierare och automatik
+            for c in d["cameras"].values():
+                c["modes"] = [x for x in c.get("modes") or [] if x in ids]
+            for n in d["notifiers"]:
+                n["modes"] = [x for x in n.get("modes") or [] if x in ids]
+            hm = d["mode_auto"]["homemode"]
+            for k in ("on", "off"):
+                if hm.get(k) not in ids:
+                    hm[k] = ""
+            d["mode_auto"]["schedule"] = [e for e in d["mode_auto"].get("schedule") or [] if e.get("mode") in ids]
+            if d["mode"].get("current") not in ids:
+                d["mode"]["current"] = new["modes"][0]["id"]
+        config.update(cleanup)
+    if "mode_auto" in new:
+        modes.homemode = None  # läs om Home Mode direkt
+        asyncio.create_task(modes.poll_homemode())
     if "synology" in new:
         ss.reset()
     if "detector" in new:
@@ -528,7 +578,7 @@ async def put_camera(name: str, request: Request, body: dict = Body(...)):
     def apply(d):
         cam = d["cameras"].get(name) or camera_defaults(name, body.get("ss_id"))
         for k in ("enabled", "types", "threshold", "min_width", "min_height", "cooldown_s", "delay_s",
-                  "max_snapshots", "wait_ms", "zones", "ss_id"):
+                  "max_snapshots", "wait_ms", "zones", "ss_id", "modes"):
             if k in body:
                 cam[k] = body[k]
         cam["name"] = name
@@ -756,7 +806,8 @@ def _rule_summary(rule, name, url, cam_id=None):
     event_ok = any(e.get("evtSrc") == 0 and e.get("evtId") == 5 and
                    (cam_id is None or str(e.get("evtDevId")) == str(cam_id)) for e in _rule_events(rule))
     return {"id": rule.get("ruleId", rule.get("id")), "name": rule.get("name"), "enabled": rule.get("enabled"),
-            "urls": mine, "current": url in mine, "event_ok": event_ok}
+            "urls": mine, "current": url in mine, "event_ok": event_ok,
+            "home_ok": rule.get("activeInHomeMode") is not False}
 
 
 def _motion_events(name, cam_id):
@@ -777,7 +828,7 @@ def _new_rule(name, cam_id, url):
               "iftttEvent": "", "iftttKey": "", "param1": "", "param2": "", "param3": "", "password": "",
               "userName": "", "webhookReqMethod": 0}
     return {"name": f"SynoArgus - {name}", "ruleType": 0, "actType": 0, "evtMinIntvl": 10,
-            "multiEvtSetting": 0, "activeInHomeMode": False, "enabled": True, "urlSplit": False,
+            "multiEvtSetting": 0, "activeInHomeMode": True, "enabled": True, "urlSplit": False,
             "actSchedule": "1" * 336, "events": _motion_events(name, cam_id), "actions": [action]}
 
 
@@ -846,13 +897,15 @@ async def actionrule_post(name: str, request: Request, body: dict = Body(default
             changed = 0
             for rule in rules:
                 sm = _rule_summary(rule, name, url, cam_id)
-                if not sm or (sm["current"] and (sm["event_ok"] or action == "update")):
+                if not sm or (sm["current"] and ((sm["event_ok"] and sm["home_ok"]) or action == "update")):
                     continue
                 new = _walk_strings(rule, lambda x: url if x in sm["urls"] else x)
-                if action == "fix" and not sm["event_ok"]:
-                    new["events"] = _motion_events(name, cam_id)
-                    if not str(new.get("actSchedule", "1")).strip("1") == "":
-                        new["actSchedule"] = "1" * 336
+                if action == "fix":
+                    new["activeInHomeMode"] = True  # SynoArgus avgör själv via lägen
+                    if not sm["event_ok"]:
+                        new["events"] = _motion_events(name, cam_id)
+                        if not str(new.get("actSchedule", "1")).strip("1") == "":
+                            new["actSchedule"] = "1" * 336
                 await ss.action_rule_save(new)
                 changed += 1
             result = {"updated": changed}
@@ -957,8 +1010,18 @@ async def status(request: Request):
     for name in (config.get("cameras") or {}):
         st = engine.state.get(name)
         cams[name] = {"busy": st.busy, "last": st.last_result, "last_alarm": st.last_alarm or None} if st else {}
-    return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:20],
-            "update": _update["data"], **storage.stats()}
+    return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30],
+            "update": _update["data"], "mode": modes.info(), **storage.stats()}
+
+
+@app.post("/api/mode/set")
+async def mode_set(request: Request, body: dict = Body(...)):
+    require(request)
+    target = modes.resolve(str(body.get("mode") or ""))
+    if not target:
+        raise err(404, "Okänt läge")
+    modes.set(target, "manual")
+    return modes.info()
 
 
 @app.get("/api/update")

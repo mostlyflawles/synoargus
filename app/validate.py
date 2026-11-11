@@ -92,6 +92,11 @@ def camera(body, labels):
         out["ss_id"] = _int(body["ss_id"], "ss_id", 0, 10 ** 9, none_ok=True)
     if "modes" in body:
         out["modes"] = _strlist(body["modes"], "modes")
+    if "stream_url" in body:
+        u = _str(body["stream_url"], "stream_url", 1000).strip()
+        if u and u != "********" and not u.startswith(("rtsp://", "rtsps://", "http://", "https://")):
+            raise Invalid("stream_url")
+        out["stream_url"] = u
     if "zones" in body:
         zones = body["zones"] or []
         if not isinstance(zones, list) or len(zones) > 50:
@@ -123,6 +128,8 @@ def settings(new, model_names=None):
         out = {}
         if "days_to_keep" in s:
             out["days_to_keep"] = _int(s["days_to_keep"], "days_to_keep", 0, 3650)
+        if "max_mb" in s:
+            out["max_mb"] = _int(s["max_mb"], "max_mb", 0, 10 ** 7)
         if "save_empty" in s:
             out["save_empty"] = bool(s["save_empty"])
         new["storage"] = out
@@ -239,6 +246,10 @@ def notifier_list(items, kinds):
         for k in ("cameras", "types", "modes"):
             if k in n:
                 n[k] = _strlist(n[k], "notifiers")
+        if "deliver" in n:
+            n["deliver"] = "request" if n["deliver"] == "request" else "direct"
+        if "fallback_min" in n:
+            n["fallback_min"] = _int(n["fallback_min"] or 0, "fallback_min", 0, 1440)
         for k, v in n.items():
             if isinstance(v, (dict, list)) and k not in ("cameras", "types", "modes"):
                 raise Invalid("notifiers")

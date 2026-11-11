@@ -181,3 +181,36 @@ pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap:
 @media (max-width: 600px) { .wev-body { margin-left: 0; } .watchpill { max-width: 90px; } }
 .guide img.shot { display: block; width: 100%; max-width: 560px; height: auto; margin: 4px 0 12px; border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in; }
 @media (max-width: 420px) { .watchpill .n { display: none; } .watchpill { padding: 3px 8px; } }
+
+/* ---------------------------------------------------------------- Översikt */
+.ov-head { justify-content: space-between; margin-bottom: 10px; }
+.ov-head .chip { display: inline-flex; align-items: center; gap: 6px; }
+.ov-grid { display: grid; margin: 0 auto; gap: 4px; background: #000; border-radius: var(--radius); overflow: hidden; padding: 4px; }
+.ov-tile { position: relative; background: #111; aspect-ratio: 16 / 9; overflow: hidden; cursor: pointer; }
+.ov-tile.empty { cursor: default; background: #0a0a0a; }
+.ov-media, .ov-media video, .ov-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ov-name { position: absolute; left: 6px; top: 6px; z-index: 2; font-size: 12px; color: #fff; background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 6px; pointer-events: none; }
+.ov-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #c9d6e2; font-size: 13px; text-align: center; padding: 10px; }
+.ov-bar { position: relative; margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+.ov-ctrl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
+.ov-ctrl .btn { padding: 7px 10px; }
+.ov-time { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 74px; text-align: center; }
+.ov-tl { position: relative; overflow-x: auto; overflow-y: hidden; height: 46px; margin-top: 10px; border-top: 1px solid var(--line); cursor: grab; scrollbar-width: thin; touch-action: pan-x; }
+.ov-track { position: relative; height: 100%; }
+.ov-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.ov-tick span { position: absolute; top: 2px; left: 3px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ov-rec { position: absolute; bottom: 8px; height: 14px; background: color-mix(in srgb, #2f80ed 55%, transparent); border-radius: 3px; }
+.ov-ev { position: absolute; bottom: 4px; width: 3px; height: 22px; margin-left: -1px; background: var(--accent); border-radius: 2px; }
+.ov-tlwrap { position: relative; }
+.ov-cursor { position: absolute; left: 50%; top: 10px; bottom: 0; width: 2px; margin-left: -1px; background: var(--err); pointer-events: none; }
+.ov-bar > p { text-align: center; }
+pre.raw { white-space: pre-wrap; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; }
+.ov-full { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; flex-direction: column; }
+.ov-full-head { display: flex; gap: 10px; align-items: center; padding: 8px 12px; color: #fff; background: rgba(20,50,74,.9); }
+.ov-full-head b { flex: 1; }
+.ov-full .ov-tile { flex: 1; aspect-ratio: auto; cursor: default; }
+@media (max-width: 600px) {
+  .ov-ctrl .btn span, .ov-head .chip span { display: none; }
+  .ov-head h2 { width: 100%; }
+  .ov-grid[data-rows="3"] .ov-tile, .ov-grid[data-rows="2"] .ov-tile { aspect-ratio: 4 / 3; }
+}

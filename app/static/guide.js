@@ -55,7 +55,32 @@ window.GUIDE = {
 <h4>Platshållare</h4>
 <p>I adresser och texter kan du använda <code>%kamera%</code>, <code>%vad%</code>, <code>%vad_en%</code>, <code>%antal%</code>, <code>%meddelande%</code>, <code>%säkerhet%</code>, <code>%tid%</code>, <code>%datum%</code> och <code>%bild%</code> (engelska namn fungerar också). Klicka på en platshållare under fältet för att lägga in den.</p>
 <h4>Exempel: Homey</h4>
-<p>Webhook, metod GET, adress <code>https://webhook.homey.app/&lt;homey-id&gt;/synoargus?tag=%kamera%;%vad%</code>. Bocka ur <i>Skicka bild</i>. I Homey: <i>När</i> Logik &gt; <i>En webhook anropas</i>, händelse <code>synoargus</code>. Taggen blir t.ex. <i>OutDoor2-Backyard;Person</i>.</p>`],
+<p>Webhook, metod GET, adress <code>https://webhook.homey.app/&lt;homey-id&gt;/synoargus?tag=%kamera%;%vad%</code>. Bocka ur <i>Skicka bild</i>. I Homey: <i>När</i> Logik &gt; <i>En webhook anropas</i>, händelse <code>synoargus</code>. Taggen blir t.ex. <i>OutDoor2-Backyard;Person</i>.</p>
+<h4 id="g-request">Skicka bara när den anropas</h4>
+<p>Med <b>Skicka: Bara när den anropas (webhook)</b> skickas notifieringen inte när något händer. Ett annat system (hemautomation, skript …) får bestämma, t.ex. "skicka bara om ingen är hemma":</p>
+<ol>
+  <li>En vanlig notifiering, t.ex. en webhook med <code>%händelse_nr%</code>, talar om händelsen för ditt system.</li>
+  <li>Ditt system anropar adressen som visas under notifieringen: <code>/api/notify?token=…&amp;notifier=&lt;namn&gt;&amp;event=&lt;nr&gt;</code>. Då skickas den med händelsens bild och text. Med <code>&amp;text=…</code> ersätts texten. Utan <code>event</code> skickas den senaste händelsen som väntar.</li>
+  <li><b>Skicka ändå efter X min</b> skickar den ändå om ingen har anropat (markeras <i>skickad utan bekräftelse</i>). 0 = aldrig.</li>
+</ol>
+<p>Under Händelser visar ⏳ notifieringar som väntar på anrop. En notifiering utan filter (alla kameror, typer och lägen) får en gul varning.</p>`],
+      ['overview', 'Översikt (experimentell)', `
+<p>Fliken <b>Översikt</b> visar alla kameror samtidigt, ungefär som Multi View i Surveillance Station.</p>
+<ul>
+  <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor.</li>
+  <li><b>Tryck på en kamera</b> för helskärm med ljud. <i>Ljud</i> slår av och på.</li>
+  <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. <i>−1 min</i>, <i>−10 s</i>, <i>+10 s</i>, <i>+1 min</i> hoppar, <i>Senaste händelse</i> spelar från strax före det senaste larmet och <i>LIVE</i> går tillbaka till livebild.</li>
+</ul>
+<h4>Bra att veta</h4>
+<ul>
+  <li>Livevideon går via <b>go2rtc</b> som finns i containern och bara lyssnar inuti den. Webbläsaren pratar bara med SynoArgus, och bara inloggade ser video.</li>
+  <li>Adressen till strömmen hämtas från Surveillance Station. Visas en kamera inte kan du ange en egen adress under <b>Kameror &gt; Videoström för Översikt</b> (t.ex. kamerans egen RTSP-adress).</li>
+  <li>Ljud kräver AAC eller G.711 (PCMA/PCMU) från kameran. Webbläsare startar ofta video utan ljud tills man trycker.</li>
+  <li>Går livevideon inte att spela visas en bild varannan sekund i stället.</li>
+  <li>Inspelningar kräver att SynoArgus-kontot får se inspelningar i Surveillance Station (fel 105 = saknar behörighet).</li>
+  <li>Varje kamera i live är en ström från NAS:en. Fyra kameror samtidigt belastar en DS918+ något – stäng fliken när du inte tittar.</li>
+  <li><i>Visa rådata för felsökning</i> visar vad Surveillance Station svarar, utan lösenord.</li>
+</ul>`],
       ['modes', 'Lägen och Home Mode', `
 <p>SynoArgus har ett aktuellt <b>läge</b> – från början <i>Hemma</i>, <i>Natt</i> och <i>Borta</i>. Byt namn och lägg till egna under <b>Inställningar &gt; Lägen</b>.</p>
 <ul>
@@ -117,7 +142,12 @@ window.GUIDE = {
   <li><b>Någon kommer in i bild</b> – rörelse som inte började vid zonen. <i>Bara när zonen är upptagen</i> gör att den som själv går till zonen inte larmar. <i>Ignorera fordon</i> frågar AI:n vad som rör sig.</li>
   <li><b>Dröjer kvar</b> – den som kom in i bild stannar vid zonen, stannar någon annanstans eller är kvar länge.</li>
   <li><b>Bevakningen har pågått länge</b> – en påminnelse.</li>
+  <li><b>Ingen i zonen längre</b> – bara med <i>Kontrollera närvaro med AI</i>: AI:n har inte sett någon i zonen på X sekunder.</li>
 </ul>
+<h4>Närvaro med AI</h4>
+<p>Rörelse syns inte när någon sitter helt stilla. Med <b>Kontrollera närvaro med AI</b> tittar AI:n i zonen varannan sekund: så länge den ser en person räknas zonen som upptagen, även utan rörelse, och den som går iväg upptäcks säkrare. Det kostar mer processor, så välj en liten modell.</p>
+<h4>Visa vad bevakningen ser</h4>
+<p>Under status visas bilder per sekund, hur stor del av zonen som rör sig och hur många bilder som var <b>dubbletter</b> (samma bild som förra gången). Många dubbletter betyder att Surveillance Station inte hinner ta nya bilder – sänk bilder per sekund. <i>Visa vad bevakningen ser</i> ritar ut rörelsen och zonen i bilden. Är zonen större än halva bilden visas en varning: en stor zon gör att mer räknas som ljusändring.</p>
 <p>Varje händelse har egen tidsgräns, egen text, tystnadstid och val av notifieringar (inga valda = alla som gäller kameran). Gör t.ex. en egen ntfy-notifiering med prioritet 5 och välj den för de händelser som ska väcka dig. <i>Stoppa bevakningen när detta händer</i> avslutar bevakningen automatiskt, t.ex. vid <i>Lämnar zonen, mot kameran</i>.</p>
 <p>I notifieringar finns <code>%händelse%</code> (texten) och <code>%händelse_id%</code> (t.ex. <code>leave_toward</code>). <code>%vad%</code> innehåller också texten.</p>
 <h4>Exempel: barn på gungan</h4>
@@ -134,6 +164,7 @@ window.GUIDE = {
   <li><b>Styr kameror (webhook)</b> – slå på eller av analysen per kamera, t.ex. från Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station påverkas inte.</li>
   <li><b>AI-modell</b> – börja med en s-modell. Under 1 s per bild (se <i>Ta bild och analysera</i>) är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.</li>
   <li><b>Inloggning</b> – vilka DSM-konton som får logga in, och Synology SSO.</li>
+  <li><b>Lagring</b> – händelser sparas i X dagar <b>eller</b> tills de tar Y MB, det som kommer först (standard 14 dagar och 2000 MB). De äldsta tas bort först. Hur mycket som används visas under Övrigt och Status.</li>
   <li><b>Säkerhetskopia</b> – exportera och importera alla inställningar. Med lösenord blir filen känslig – förvara den säkert. Lösenorden ligger i klartext i <code>data/config.json</code> på NAS:en (läsbar bara för root).</li>
   <li><b>Uppdatering</b> – en prick på Status betyder ny version. Container Manager &gt; Projekt &gt; synoargus &gt; Åtgärd &gt; <b>Stoppa</b>, sedan <b>Bygg</b>. Städa under Image &gt; Remove Unused Images.</li>
 </ul>
@@ -145,7 +176,9 @@ window.GUIDE = {
   <li><b>Koppla certifikatet:</b> Kontrollpanelen &gt; Säkerhet &gt; Certifikat &gt; Inställningar – välj certifikatet för den nya tjänsten.</li>
   <li>Öppna <code>https://dittnamn.synology.me:8687</code>, logga in och tryck <i>Installera som app</i>. På iPhone/iPad: Dela &gt; Lägg till på hemskärmen.</li>
 </ol>
-<p class="muted">Ska adressen bara fungera hemma behöver ingen port öppnas mot internet, men routern måste klara att nå namnet inifrån (NAT loopback eller lokal DNS). Regeln i Surveillance Station kan fortsätta använda den vanliga http-adressen.</p>`],
+<p class="muted">Öppna <b>ingen port</b> mot internet. Använd adressen hemma eller via VPN (se nedan). Routern måste klara att nå namnet inifrån (NAT loopback eller lokal DNS). Regeln i Surveillance Station kan fortsätta använda den vanliga http-adressen.</p>
+<h4 id="g-vpn">Utanför hemmet: använd VPN</h4>
+<p>SynoArgus ger tillgång till dina kameror. <b>Gör den inte nåbar från internet</b> (ingen portöppning, ingen omvänd proxy utåt). Vill du komma åt den hemifrån, anslut med VPN till hemnätet – t.ex. VPN Server i DSM, WireGuard i routern eller Tailscale – och öppna den vanliga adressen. Notifieringar fungerar ändå, eftersom de skickas ut från NAS:en.</p>`],
       ['faq', 'Vanliga problem', `
 <ul>
   <li><b>Inget händer vid rörelse</b> – syns anropet under Status &gt; Logg? Om inte: är regeln aktiv (även i Home Mode)? Fungerar <i>Skicka test</i> i regeln? Står det <i>ignoreras (läge …)</i> larmar kameran inte i det aktuella läget.</li>
@@ -156,6 +189,9 @@ window.GUIDE = {
   <li><b>Kopiera fungerar inte</b> – över HTTP markeras texten i stället, tryck Ctrl+C.</li>
   <li><b>Larm kommer sent</b> – under <i>Jag går förbi nu</i> går kalibreringen före larm i 90 sekunder.</li>
   <li><b>Bevakningen ger för många händelser</b> – kör i testläge, höj tiderna, slå på <i>Bara när zonen är upptagen</i> och lägg uteslutningszoner över träd och vägar.</li>
+  <li><b>Bevakningen visar bara "stilla"</b> – titta på diagnosraden: många dubbletter = sänk bilder per sekund; liten andel i zonen = gör zonen mindre eller se <i>Visa vad bevakningen ser</i>. Prova <i>Kontrollera närvaro med AI</i>.</li>
+  <li><b>Inget händer när jag trycker</b> – efter en uppdatering kan webbläsaren ha gamla filer kvar. Ladda om sidan (från 0.7 sker det av sig själv).</li>
+  <li><b>Översikt visar bara bilder</b> – livevideon kunde inte startas. Se <i>Visa rådata för felsökning</i>, och prova en egen adress under Kameror &gt; Videoström.</li>
   <li><b>Logg</b> – Container Manager &gt; Container &gt; synoargus &gt; Logg. Från 0.6 står inga lösenord eller nycklar i loggen; rensa gärna äldre loggar.</li>
 </ul>`],
     ],
@@ -214,7 +250,32 @@ window.GUIDE = {
 <h4>Placeholders</h4>
 <p>In URLs and texts you can use <code>%camera%</code>, <code>%what%</code>, <code>%what_en%</code>, <code>%count%</code>, <code>%message%</code>, <code>%confidence%</code>, <code>%time%</code>, <code>%date%</code> and <code>%image%</code> (Swedish names work too). Click a placeholder under the field to insert it.</p>
 <h4>Example: Homey</h4>
-<p>Webhook, method GET, URL <code>https://webhook.homey.app/&lt;homey-id&gt;/synoargus?tag=%camera%;%what%</code>. Uncheck <i>Send image</i>. In Homey: <i>When</i> Logic &gt; <i>A webhook is called</i>, event <code>synoargus</code>. The tag becomes e.g. <i>OutDoor2-Backyard;Person</i>.</p>`],
+<p>Webhook, method GET, URL <code>https://webhook.homey.app/&lt;homey-id&gt;/synoargus?tag=%camera%;%what%</code>. Uncheck <i>Send image</i>. In Homey: <i>When</i> Logic &gt; <i>A webhook is called</i>, event <code>synoargus</code>. The tag becomes e.g. <i>OutDoor2-Backyard;Person</i>.</p>
+<h4 id="g-request">Send only when called</h4>
+<p>With <b>Send: Only when called (webhook)</b> the notification is not sent when something happens. Another system (home automation, a script …) decides, e.g. "only send if nobody is home":</p>
+<ol>
+  <li>An ordinary notification, e.g. a webhook with <code>%event_no%</code>, tells your system about the event.</li>
+  <li>Your system calls the address shown under the notification: <code>/api/notify?token=…&amp;notifier=&lt;name&gt;&amp;event=&lt;no&gt;</code>. It is then sent with the event's image and text. <code>&amp;text=…</code> replaces the text. Without <code>event</code> the latest waiting event is sent.</li>
+  <li><b>Send anyway after X min</b> sends it anyway if nobody has called (marked <i>sent without confirmation</i>). 0 = never.</li>
+</ol>
+<p>Under Events, ⏳ marks notifications waiting for a call. A notification without filters (all cameras, types and modes) gets a yellow warning.</p>`],
+      ['overview', 'Overview (experimental)', `
+<p>The <b>Overview</b> tab shows all cameras at once, much like Multi View in Surveillance Station.</p>
+<ul>
+  <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages.</li>
+  <li><b>Tap a camera</b> for full screen with sound. <i>Sound</i> toggles it.</li>
+  <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. <i>−1 min</i>, <i>−10 s</i>, <i>+10 s</i>, <i>+1 min</i> jump, <i>Last event</i> plays from just before the latest alarm and <i>LIVE</i> returns to live view.</li>
+</ul>
+<h4>Good to know</h4>
+<ul>
+  <li>Live video goes through <b>go2rtc</b>, which is included in the container and only listens inside it. The browser only talks to SynoArgus, and only logged-in users see video.</li>
+  <li>The stream address is fetched from Surveillance Station. If a camera is not shown you can enter your own address under <b>Cameras &gt; Video stream for Overview</b> (e.g. the camera's own RTSP address).</li>
+  <li>Sound requires AAC or G.711 (PCMA/PCMU) from the camera. Browsers often start video muted until you tap.</li>
+  <li>If live video cannot be played, an image every other second is shown instead.</li>
+  <li>Recordings require that the SynoArgus account may view recordings in Surveillance Station (error 105 = missing permission).</li>
+  <li>Each live camera is a stream from the NAS. Four cameras at once put some load on a DS918+ – close the tab when you are not watching.</li>
+  <li><i>Show raw data for troubleshooting</i> shows what Surveillance Station answers, without passwords.</li>
+</ul>`],
       ['modes', 'Modes and Home Mode', `
 <p>SynoArgus has a current <b>mode</b> – initially <i>Home</i>, <i>Night</i> and <i>Away</i>. Rename them and add your own under <b>Settings &gt; Modes</b>.</p>
 <ul>
@@ -276,7 +337,12 @@ window.GUIDE = {
   <li><b>Someone enters the picture</b> – motion that did not start at the zone. <i>Only when the zone is occupied</i> keeps whoever walks to the zone from alarming. <i>Ignore vehicles</i> asks the AI what is moving.</li>
   <li><b>Lingers</b> – whoever entered the picture stops at the zone, stops somewhere else or stays for a long time.</li>
   <li><b>The watch has been running for a long time</b> – a reminder.</li>
+  <li><b>Nobody in the zone any more</b> – only with <i>Check presence with AI</i>: the AI has not seen anyone in the zone for X seconds.</li>
 </ul>
+<h4>Check presence with AI</h4>
+<p>Motion is not visible when someone sits completely still. With <b>Check presence with AI</b> the AI looks in the zone every other second: as long as it sees a person the zone counts as occupied, even without motion, and someone walking away is detected more reliably. It costs more CPU, so choose a small model.</p>
+<h4>Show what the watch sees</h4>
+<p>The status shows images per second, how much of the zone is moving and how many images were <b>duplicates</b> (the same image as last time). Many duplicates mean that Surveillance Station cannot produce new images fast enough – lower the images per second. <i>Show what the watch sees</i> draws the motion and the zone in the image. If the zone is larger than half the image a warning is shown: a large zone makes more motion count as a light change.</p>
 <p>Each event has its own time limit, text, quiet time and choice of notifications (none selected = all that apply to the camera). For example, create a separate ntfy notification with priority 5 and select it for the events that should wake you up. <i>Stop the watch when this happens</i> ends the watch automatically, e.g. on <i>Leaves the zone, towards the camera</i>.</p>
 <p>Notifications can use <code>%event%</code> (the text) and <code>%event_id%</code> (e.g. <code>leave_toward</code>). <code>%what%</code> also contains the text.</p>
 <h4>Example: a child on the swing</h4>
@@ -293,6 +359,7 @@ window.GUIDE = {
   <li><b>Control cameras (webhook)</b> – turn the analysis on or off per camera, e.g. from Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station is not affected.</li>
   <li><b>AI model</b> – start with an s model. Under 1 s per image (see <i>Take snapshot and analyse</i>) is good. Own models (e.g. YOLO26) are added with the converter, see the README.</li>
   <li><b>Login</b> – which DSM accounts may log in, and Synology SSO.</li>
+  <li><b>Storage</b> – events are kept for X days <b>or</b> until they take up Y MB, whichever comes first (default 14 days and 2000 MB). The oldest go first. The space used is shown under Other and Status.</li>
   <li><b>Backup</b> – export and import all settings. With passwords the file is sensitive – keep it safe. The passwords are stored in plain text in <code>data/config.json</code> on the NAS (readable by root only).</li>
   <li><b>Update</b> – a dot on Status means a new version. Container Manager &gt; Project &gt; synoargus &gt; Action &gt; <b>Stop</b>, then <b>Build</b>. Clean up under Image &gt; Remove Unused Images.</li>
 </ul>
@@ -304,7 +371,9 @@ window.GUIDE = {
   <li><b>Assign the certificate:</b> Control Panel &gt; Security &gt; Certificate &gt; Settings – choose the certificate for the new service.</li>
   <li>Open <code>https://yourname.synology.me:8687</code>, log in and press <i>Install as an app</i>. On iPhone/iPad: Share &gt; Add to Home Screen.</li>
 </ol>
-<p class="muted">If the address should only work at home, no port has to be opened to the internet, but the router must be able to reach the name from inside (NAT loopback or local DNS). The rule in Surveillance Station can keep using the plain http address.</p>`],
+<p class="muted">Do <b>not open any port</b> to the internet. Use the address at home or over VPN (see below). The router must be able to reach the name from inside (NAT loopback or local DNS). The rule in Surveillance Station can keep using the plain http address.</p>
+<h4 id="g-vpn">Away from home: use a VPN</h4>
+<p>SynoArgus gives access to your cameras. <b>Do not make it reachable from the internet</b> (no port forwarding, no public reverse proxy). To reach it while away, connect to your home network with a VPN – e.g. VPN Server in DSM, WireGuard in the router or Tailscale – and open the usual address. Notifications work anyway, since they are sent out from the NAS.</p>`],
       ['faq', 'Troubleshooting', `
 <ul>
   <li><b>Nothing happens on motion</b> – is the call shown under Status &gt; Log? If not: is the rule enabled (also in Home Mode)? Does <i>Send test</i> in the rule work? If it says <i>ignored (mode …)</i> the camera does not alarm in the current mode.</li>
@@ -315,6 +384,9 @@ window.GUIDE = {
   <li><b>Copy does not work</b> – over HTTP the text is selected instead, press Ctrl+C.</li>
   <li><b>Alarms arrive late</b> – during <i>I am walking past now</i> the calibration goes before alarms for 90 seconds.</li>
   <li><b>The watch gives too many events</b> – run it in test mode, raise the times, turn on <i>Only when the zone is occupied</i> and put exclusion zones over trees and roads.</li>
+  <li><b>The watch only shows "quiet"</b> – look at the diagnostics line: many duplicates = lower the images per second; a small share in the zone = make the zone smaller or use <i>Show what the watch sees</i>. Try <i>Check presence with AI</i>.</li>
+  <li><b>Nothing happens when I press</b> – after an update the browser may keep old files. Reload the page (from 0.7 this happens by itself).</li>
+  <li><b>Overview only shows images</b> – live video could not be started. See <i>Show raw data for troubleshooting</i> and try your own address under Cameras &gt; Video stream.</li>
   <li><b>Logs</b> – Container Manager &gt; Container &gt; synoargus &gt; Log. From 0.6 the log contains no passwords or keys; feel free to clear older logs.</li>
 </ul>`],
     ],

@@ -30,4 +30,5 @@ class AsyncClient:
     async def get(self, url, **kw): return await self._do("GET", url, **kw)
     async def post(self, url, **kw): return await self._do("POST", url, **kw)
     async def put(self, url, **kw): return await self._do("PUT", url, **kw)
+    async def delete(self, url, **kw): return await self._do("DELETE", url, **kw)
     async def request(self, method, url, **kw): return await self._do(method, url, **kw)

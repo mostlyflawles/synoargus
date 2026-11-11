@@ -1,5 +1,10 @@
 """Översättning av texter från servern (felmeddelanden, logg). Svenska är grundspråk."""
+from contextvars import ContextVar
+
 from .config import config
+
+# Språket för svaret på ett anrop från webbläsaren (felmeddelanden). Larmtexter följer inställningen.
+request_lang = ContextVar("request_lang", default=None)
 
 EN = {
     # allmänt / inloggning
@@ -83,6 +88,13 @@ EN = {
     "Home Mode {s} – väntar på schemat": "Home Mode {s} – waiting for the schedule",
     "på": "on", "av": "off",
     "Ogiltigt värde: {field}": "Invalid value: {field}",
+    "Bevakningen är inte igång": "The watch is not running",
+    "Ingen inspelning": "No recording",
+    "Kontot saknar behörighet att läsa inspelningar i Surveillance Station. Ge kontot rätt att visa inspelningar (t.ex. profilen All-Object Manager).":
+        "The account may not read recordings in Surveillance Station. Give it the right to view recordings (e.g. the All-Object Manager profile).",
+    "Okänd notifiering": "Unknown notification", "Notifieringen är avstängd": "The notification is turned off",
+    "Händelsen finns inte (längre)": "The event does not exist (any more)",
+    "skickad utan bekräftelse": "sent without confirmation",
     "Okänd åtgärd (start, stop eller status)": "Unknown action (start, stop or status)",
     "Rita en zon och spara bevakningen först": "Draw a zone and save the watch first",
     "En kalibrering pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.":
@@ -104,14 +116,16 @@ EN = {
     "Stilla i zonen i {s} s": "Quiet in the zone for {s} s",
     "Bevakningen har pågått i {m} min": "The watch has been running for {m} min",
     "Fordon i bild – ignoreras": "Vehicle in the picture – ignored",
+    "Ingen i zonen längre": "Nobody in the zone any more",
 }
 
 
 def lang():
+    """SynoArgus språk: larmtexter, loggar och notifieringar."""
     return config.get("language") or "sv"
 
 
 def tr(msg, /, **kw):
-    if lang() == "en":
+    if (request_lang.get() or lang()) == "en":
         msg = EN.get(msg, msg)
     return msg.format(**kw) if kw else msg

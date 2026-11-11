@@ -15,7 +15,11 @@ with the picture.
 - **Modes** (Home / Night / Away or your own): choose per camera and per notification when they are active; switch by hand, schedule (with return to Home Mode), webhook or Surveillance Station Home Mode
 - Notifications: **Pushbullet, Telegram, ntfy, email, webhook, MQTT** – with placeholders in texts and URLs
 - **Watch** (experimental): keeps an eye on a zone – arrival, activity stops, someone leaves, someone else enters or
-  lingers – based on motion, so it also works in the dark; start and stop it with a webhook
+  lingers – based on motion, so it also works in the dark, optionally with AI presence; start and stop it with a webhook
+- **Overview** (experimental): all cameras live in a grid (1×2, 1×3, 2×2, 2×3), full screen with sound, and a timeline
+  of Surveillance Station recordings to scroll back in time (live video via the bundled go2rtc)
+- Notifications can wait until **another system asks for them** (`/api/notify`), with an optional fallback time
+- Storage limit by age **and** size, with the space used shown
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,
   motion detection tuning, **calibration** (measures a day and proposes sensitivity/threshold), built-in guide, backup/restore, update check
 - Can be installed as an app (PWA) when opened over https
@@ -25,10 +29,14 @@ with the picture.
 <img src="app/static/guide/en-events.png" alt="Events" width="49%">
 <img src="app/static/guide/en-camera.png" alt="Camera settings" width="49%">
 <img src="app/static/guide/en-watch.png" alt="Watch" width="49%">
-<img src="app/static/guide/en-modes.png" alt="Modes" width="49%">
+<img src="app/static/guide/en-overview.png" alt="Overview" width="49%">
 </p>
 
 *Screenshots with a drawn demo camera.*
+
+> **Do not expose SynoArgus to the internet.** It gives access to your cameras. Use it on your home network and,
+> when away, connect with a VPN (VPN Server in DSM, WireGuard, Tailscale …). No port forwarding is needed –
+> notifications are sent out from the NAS. See [Security notes](docs/guide.md#13-security-notes).
 
 > SynoArgus is an independent project and is not affiliated with, endorsed by or supported by Synology Inc.
 > "Synology" and "Surveillance Station" are trademarks of Synology Inc.
@@ -91,7 +99,8 @@ Rough speed on a DS918+ (Celeron J3455): YOLOX-S ≈ 0.3–0.6 s per image on th
    - allowed to use Surveillance Station (Control Panel > User > Applications),
    - in Surveillance Station > Privilege settings: allowed to view the cameras (the "Spectator" profile is enough).
      To use [motion detection tuning](docs/guide.md#motion-detection-tuning) the user also needs permission to change camera settings
-     (e.g. the "Manager" profile).
+     (e.g. the "Manager" profile). To play recordings in [Overview](docs/guide.md#7-overview-experimental) the profile
+     must allow playback of recordings.
 3. In File Station, create the folder `docker/synoargus` and inside it an empty folder `data`.
 4. Put `docker-compose.yml` from this repository in `docker/synoargus`.
 
@@ -136,17 +145,18 @@ the same guide is built into SynoArgus under **Guide** (English and Swedish):
 
 1. [Connect Surveillance Station](docs/guide.md#1-connect-surveillance-station) – an Action Rule per camera (*Create rule* or manually)
 2. [Configure cameras](docs/guide.md#2-configure-cameras) – types, confidence, zones, test/live view, motion detection tuning
-3. [Notifications](docs/guide.md#3-notifications) – Pushbullet, Telegram, ntfy, email, webhook, MQTT, placeholders, Homey example
+3. [Notifications](docs/guide.md#3-notifications) – Pushbullet, Telegram, ntfy, email, webhook, MQTT, placeholders, send only when called
 4. [Modes and Home Mode](docs/guide.md#4-modes-and-home-mode) – manual, schedule, webhook, Home Mode
 5. [Calibration](docs/guide.md#5-calibration) – measure a day, get a proposal for sensitivity/threshold
 6. [Watch (experimental)](docs/guide.md#6-watch-experimental) – events around a zone, with a webhook to start and stop
-7. [Control cameras via webhook](docs/guide.md#7-control-cameras-via-webhook)
-8. [Install as an app (PWA) and https](docs/guide.md#8-install-as-an-app-pwa-and-https)
-9. [Login with Synology SSO](docs/guide.md#9-login-with-synology-sso-optional)
-10. [Own models (YOLO26 etc.)](docs/guide.md#10-own-models-yolo26-etc)
-11. [Backup and restore](docs/guide.md#11-backup-and-restore)
-12. [Security notes](docs/guide.md#12-security-notes)
-13. [Troubleshooting](docs/guide.md#troubleshooting)
+7. [Overview (experimental)](docs/guide.md#7-overview-experimental) – all cameras live, full screen with sound, recordings on a timeline
+8. [Control cameras via webhook](docs/guide.md#8-control-cameras-via-webhook)
+9. [Install as an app (PWA) and https](docs/guide.md#9-install-as-an-app-pwa-and-https)
+10. [Login with Synology SSO](docs/guide.md#10-login-with-synology-sso-optional)
+11. [Own models (YOLO26 etc.)](docs/guide.md#11-own-models-yolo26-etc)
+12. [Backup, restore and storage](docs/guide.md#12-backup-restore-and-storage)
+13. [Security notes](docs/guide.md#13-security-notes)
+14. [Troubleshooting](docs/guide.md#troubleshooting)
 
 **Locked out of SynoArgus?** Remove the `#` in front of `- SYNOARGUS_UNLOCK=1` in `docker-compose.yml` and build the
 project. All DSM accounts can now log in. Add your account under Settings > Other > Login, put the `#` back and build again.
@@ -211,5 +221,7 @@ The update check in SynoArgus compares `APP_VERSION` with the latest release/tag
 - SynoArgus: **MIT** – see [LICENSE](LICENSE).
 - Built-in models: **YOLOX** by Megvii, Apache-2.0.
 - Main dependencies: OpenVINO (Apache-2.0), FastAPI (MIT), Uvicorn (BSD), HTTPX (BSD), Pillow (MIT-CMU), NumPy (BSD),
-  paho-mqtt (EPL-2.0 / EDL-1.0).
+  websockets (BSD), paho-mqtt (EPL-2.0 / EDL-1.0).
+- Bundled binary: [go2rtc](https://github.com/AlexxIT/go2rtc) by Alexey Khit, **MIT** – live video for the Overview tab.
+  Downloaded from its GitHub release when the image is built; runs inside the container and listens on 127.0.0.1 only.
 - Optional converter: Ultralytics (AGPL-3.0) and PyTorch (BSD) – only used if you enable it for your own models.

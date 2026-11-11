@@ -1,5 +1,6 @@
 """SynoArgus – AI-larm för Synology Surveillance Station."""
 import asyncio
+import contextvars
 import base64
 import hmac
 import io
@@ -12,12 +13,12 @@ from copy import deepcopy
 from datetime import datetime
 
 import httpx
-from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from . import auth, notifiers, storage, validate
+from . import auth, i18n, notifiers, storage, validate
 from .config import (CAPTURE_DIR, COMMON_TYPES, DEFAULT_MODEL, GITHUB_REPO, MODEL_DIR, TYPE_NAMES_SV,
                      USER_MODEL_DIR, camera_defaults, config)
 from .detector import COCO as COCO_TYPES
@@ -28,6 +29,8 @@ from .i18n import tr
 from .modes import ModeManager, SPECIAL as SPECIAL_MODES
 from .calibration import BusyError, CalibrationManager
 from . import calibration as calibration_mod
+from . import dispatch
+from . import streams as streams_mod
 from . import watch as watch_mod
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
@@ -152,7 +155,10 @@ def invalid(e):
 SECRET_PATHS = [("synology", "password"), ("auth", "sso", "client_secret")]
 
 
-def masked(d):
+EXPORT_SECRET_FIELDS = ("url", "topic")     # webhook-adresser och ntfy-ämnen kan innehålla nycklar
+
+
+def masked(d, export=False):
     d = deepcopy(d)
     for path in SECRET_PATHS:
         cur = d
@@ -160,8 +166,12 @@ def masked(d):
             cur = cur.get(p, {})
         if cur.get(path[-1]):
             cur[path[-1]] = MASK
+    if export:
+        for c in (d.get("cameras") or {}).values():
+            if c.get("stream_url"):
+                c["stream_url"] = MASK      # kan innehålla kamerans lösenord
     for n in d.get("notifiers", []):
-        for k in notifiers.SECRET_FIELDS:
+        for k in notifiers.SECRET_FIELDS + (EXPORT_SECRET_FIELDS if export else ()):
             if n.get(k):
                 n[k] = MASK
     d.pop("secret", None)
@@ -265,11 +275,12 @@ async def startup():
         while True:
             try:
                 n = await asyncio.to_thread(storage.cleanup, config.get("storage", "days_to_keep"))
+                n += await asyncio.to_thread(storage.enforce_size, config.get("storage", "max_mb"))
                 if n:
                     log.info("Rensade %d gamla händelser", n)
             except Exception as e:
                 log.warning("Rensning misslyckades: %s", e)
-            await asyncio.sleep(3600)
+            await asyncio.sleep(600)
 
     async def update_loop():
         await asyncio.sleep(60)
@@ -281,17 +292,26 @@ async def startup():
     asyncio.create_task(housekeeping())
     asyncio.create_task(modes.loop())
     asyncio.create_task(calib.loop())
+    asyncio.create_task(dispatcher.loop())
+    await streams.start()
     asyncio.create_task(update_loop())
 
 
 @app.middleware("http")
 async def headers(request, call_next):
-    resp = await call_next(request)
+    lg = request.headers.get("x-lang")
+    token = i18n.request_lang.set(lg if lg in ("sv", "en") else None)
+    try:
+        resp = await call_next(request)
+    finally:
+        i18n.request_lang.reset(token)
     resp.headers["X-Robots-Tag"] = "noindex"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
         resp.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static/") and "cache-control" not in resp.headers:
+        resp.headers["Cache-Control"] = "no-cache"     # fråga alltid servern (304 om filen är oförändrad)
     return resp
 
 
@@ -568,7 +588,7 @@ async def put_settings(request: Request, body: dict = Body(...)):
         config.update(cleanup)
     if "mode_auto" in new and (new["mode_auto"].get("homemode") or old["mode_auto"]["homemode"]) != old["mode_auto"]["homemode"]:
         modes.homemode = None  # ändrad koppling: läs om Home Mode direkt
-        asyncio.create_task(modes.poll_homemode())
+        asyncio.create_task(modes.poll_homemode(), context=contextvars.Context())
     if "synology" in new:
         ss.reset()
     if "detector" in new:
@@ -585,7 +605,7 @@ async def export_settings(request: Request, secrets: int = 1):
     d = config.get()
     d.pop("secret", None)
     if not secrets:
-        d = masked(d)
+        d = masked(d, export=True)
     d["_synoargus"] = {"version": APP_VERSION, "exported": datetime.now().astimezone().isoformat(timespec="seconds"),
                        "secrets": bool(secrets)}
     name = f"synoargus-settings-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
@@ -615,6 +635,8 @@ async def import_settings(request: Request, body: dict = Body(...)):
             if not isinstance(cname, str) or not cname.strip() or len(cname) > 200:
                 raise validate.Invalid("cameras")
             cams[cname] = {**camera_defaults(cname), **validate.camera(c, COCO_TYPES), "name": cname}
+            if cams[cname].get("stream_url") == MASK:
+                cams[cname]["stream_url"] = ((old.get("cameras") or {}).get(cname) or {}).get("stream_url", "")
         new["cameras"] = cams
         new["notifiers"] = notis
         if isinstance(body.get("watches"), dict):
@@ -674,6 +696,8 @@ async def put_camera(name: str, request: Request, body: dict = Body(...)):
     except validate.Invalid as e:
         raise invalid(e)
     clean.pop("action_rule", None)
+    if clean.get("stream_url") == MASK:
+        clean.pop("stream_url")
 
     def apply(d):
         cam = d["cameras"].get(name) or camera_defaults(name, clean.get("ss_id"))
@@ -681,6 +705,8 @@ async def put_camera(name: str, request: Request, body: dict = Body(...)):
         cam["name"] = name
         d["cameras"][name] = cam
     config.update(apply)
+    if "stream_url" in clean:
+        streams.refresh_soon()
     return {"ok": True}
 
 
@@ -863,7 +889,177 @@ async def md_view_for(camera):
 calib = CalibrationManager(config, engine, md_view_for)
 
 
+dispatcher = dispatch.Dispatcher(config)
+streams = streams_mod.Streams(config, ss)
+
+
+# ------------------------------------------------------------------ översikt (livebild och inspelningar)
+OVERVIEW_PRESTART = 3          # "senaste händelsen" spelas från några sekunder före larmet
+
+
+@app.get("/api/overview")
+async def overview(request: Request):
+    require(request)
+    cams = [{"name": c["name"], "ss_id": c.get("ss_id"), "enabled": c.get("enabled", True)}
+            for c in (config.get("cameras") or {}).values()]
+    last = storage.list_events(1, only_alarms=True)
+    return {"cameras": cams, "live": streams.status(),
+            "last_event": {"ts": last[0]["ts"], "camera": last[0]["camera"], "id": last[0]["id"]} if last else None}
+
+
+@app.websocket("/api/live/ws")
+async def live_ws(ws: WebSocket, cam: str = ""):
+    """Liveström (fMP4 över WebSocket) från go2rtc, bara för inloggade."""
+    p = auth.verify(config.get("secret"), ws.cookies.get(auth.SESSION_COOKIE, ""))
+    if not config.get("setup_done") or not p or not auth.user_allowed(config, p["u"]):
+        await ws.close(code=4401)
+        return
+    if not streams.available:
+        await ws.close(code=4503)
+        return
+    names = await streams.ensure()
+    name = names.get(cam)
+    if not name:
+        await ws.close(code=4404)
+        return
+    import websockets
+    await ws.accept()
+    try:
+        async with websockets.connect(f"{streams_mod.WS}/api/ws?src={name}", max_size=None,
+                                      open_timeout=10, ping_interval=None) as up:
+            async def down():
+                async for msg in up:
+                    if isinstance(msg, bytes):
+                        await ws.send_bytes(msg)
+                    else:
+                        await ws.send_text(msg)
+
+            async def upstream():
+                while True:
+                    m = await ws.receive()
+                    if m.get("type") == "websocket.disconnect":
+                        return
+                    if m.get("text") is not None:
+                        await up.send(m["text"])
+                    elif m.get("bytes") is not None:
+                        await up.send(m["bytes"])
+            tasks = [asyncio.create_task(down()), asyncio.create_task(upstream())]
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+    except Exception as e:
+        log.debug("Liveström %s: %s", cam, streams_mod.mask(e))
+    try:
+        await ws.close()
+    except Exception:
+        pass
+
+
+def _cam_ids():
+    return {c["ss_id"]: c["name"] for c in (config.get("cameras") or {}).values() if c.get("ss_id") is not None}
+
+
+@app.get("/api/overview/timeline")
+async def overview_timeline(request: Request, start: float = 0, end: float = 0, cam: str = ""):
+    """Inspelningar (från Surveillance Station) och SynoArgus händelser mellan start och end."""
+    require(request)
+    end = end or time.time()
+    start = start or end - 6 * 3600
+    if end - start > 7 * 86400:
+        start = end - 7 * 86400
+    ids = _cam_ids()
+    if cam:
+        ids = {i: n for i, n in ids.items() if n == cam}
+    recs, error = [], None
+    if ids:
+        try:
+            items, _ = await ss.recordings(list(ids), start, end)
+            recs = [{"camera": ids.get(r["cam"]), "start": r["start"], "stop": r["stop"], "reason": r["reason"]}
+                    for r in items if r["cam"] in ids and r["stop"] >= start and r["start"] <= end]
+        except SynologyError as e:
+            error = _ss_err(e, "recordings").detail if e.code == 105 else str(e)
+        except Exception as e:
+            error = safe_error(e)
+    evs = [{"ts": e["ts"], "camera": e["camera"], "types": e["types"], "id": e["id"], "alarm": e["alarm"]}
+           for e in storage.events_between(start, end, cam or None)]
+    return {"start": start, "end": end, "recordings": recs, "events": evs, "error": error}
+
+
+@app.get("/api/overview/recording")
+async def overview_recording(request: Request, cam: str, t: float, length: int = 120, check: int = 0):
+    """En bit av inspelningen som täcker tiden t (mp4). Rubriken X-Start anger var biten börjar."""
+    require(request)
+    c = cam_or_404(cam)
+    if c.get("ss_id") is None:
+        raise err(404, "Ingen inspelning")
+    length = max(10, min(600, int(length)))
+    try:
+        items, _ = await ss.recordings([c["ss_id"]], t - 6 * 3600, t + length)
+    except SynologyError as e:
+        raise _ss_err(e, "recordings") if e.code == 105 else HTTPException(502, str(e))
+    cover = [r for r in items if r["cam"] == c["ss_id"] and r["start"] <= t < r["stop"]]
+    if not cover:
+        nxt = [r["start"] for r in items if r["cam"] == c["ss_id"] and r["start"] > t]
+        body = {"found": False, "detail": tr("Ingen inspelning"), "next": min(nxt) if nxt else None}
+        return body if check else JSONResponse(body, status_code=404)
+    r = cover[-1]
+    offset = max(0.0, t - r["start"])
+    if check:
+        return {"found": True, "start": r["start"] + offset, "stop": r["stop"]}
+    try:
+        resp = await ss.open_recording(r["id"], offset * 1000, length * 1000)
+    except SynologyError as e:
+        raise HTTPException(502, str(e))
+
+    async def body():
+        try:
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+        finally:
+            await resp.aclose()
+    return StreamingResponse(body(), media_type=resp.headers.get("content-type") or "video/mp4",
+                             headers={"X-Start": str(r["start"] + offset), "X-Stop": str(r["stop"]),
+                                      "Cache-Control": "no-store"})
+
+
+@app.get("/api/overview/raw")
+async def overview_raw(request: Request):
+    """Rådata för felsökning (adresser utan lösenord)."""
+    require(request)
+    await streams.ensure(force=True)
+    ids = _cam_ids()
+    rec_raw = None
+    if ids:
+        try:
+            _, rec_raw = await ss.recordings(list(ids), time.time() - 3600, time.time(), limit=5)
+        except Exception as e:
+            rec_raw = {"error": str(e)}
+    return {"live": streams.status(), "live_paths": json.loads(streams_mod.mask(json.dumps(streams.raw))),
+            "recordings": _mask_rules(rec_raw)}
+engine.dispatcher = dispatcher
 watch = watch_mod.WatchManager(config, engine, ss)
+
+
+@app.api_route("/api/notify", methods=["GET", "POST"])
+async def notify_on_request(token: str = "", notifier: str = "", event: str = "", text: str = ""):
+    """Skickar en notifiering som väntar på anrop: ?notifier=<id eller namn>[&event=<nr>][&text=…]"""
+    check_token(token)
+    n = dispatcher.find_notifier(notifier)
+    if not n:
+        raise err(404, "Okänd notifiering")
+    if not n.get("enabled", True):
+        raise err(409, "Notifieringen är avstängd")
+    ev = None
+    if str(event).strip():
+        try:
+            ev = int(str(event).strip())
+        except ValueError:
+            raise err(400, "Ogiltigt värde: {field}", field="event")
+    try:
+        event_id, ok, e = await dispatcher.request(n, ev, text or None)
+    except LookupError:
+        raise err(404, "Händelsen finns inte (längre)")
+    return {"ok": ok, "event": event_id, "notifier": n.get("name") or n["type"], "error": e}
 watch.calib_active = calib.active
 calib.watch_active = watch.running
 
@@ -911,6 +1107,16 @@ async def watches_get(request: Request):
     return {"watches": config.get("watches") or {}, "defaults": watch_mod.defaults(), "status": watch.status(),
             "calibration": calib.active(), "base": (config.get("public_url") or base_url(request)).rstrip("/"),
             "token": config.get("trigger_token")}
+
+
+@app.get("/api/watches/{name}/debug.jpg")
+async def watch_debug(name: str, request: Request):
+    """Det bevakningen ser just nu: zonen, rörelsen och spåren inritade."""
+    require(request)
+    jpeg = await asyncio.to_thread(watch.debug, name)
+    if not jpeg:
+        raise err(404, "Bevakningen är inte igång")
+    return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/watches/status")
@@ -1158,6 +1364,9 @@ def _ss_err(e, what):
             return err(403, "Kontot behöver profilen Administrator i Surveillance Station för att läsa och skapa "
                             "regler. Du kan slå på det tillfälligt, skapa eller uppdatera reglerna och sedan byta "
                             "tillbaka – reglerna fortsätter att fungera.")
+        if what == "recordings":
+            return err(403, "Kontot saknar behörighet att läsa inspelningar i Surveillance Station. Ge kontot rätt "
+                            "att visa inspelningar (t.ex. profilen All-Object Manager).")
         return err(403, "Kontot behöver profilen All-Object Manager (eller Administrator) i Surveillance Station "
                         "för att läsa och ändra rörelsedetekteringen.")
     if isinstance(e, HTTPException):
@@ -1309,6 +1518,7 @@ async def events(request: Request, before: int = 0, camera: str = "", alarms: in
 async def delete_events(request: Request):
     require(request)
     n = await asyncio.to_thread(storage.clear_all)
+    _usage_cache["t"] = 0
     return {"ok": True, "deleted": n}
 
 
@@ -1330,7 +1540,26 @@ async def status(request: Request):
         cams[name] = {"busy": st.busy, "last": st.last_result, "last_alarm": st.last_alarm or None} if st else {}
     return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30],
             "update": _update["data"], "mode": modes.info(), "priority": _priority(),
-            "watch": {k: v for k, v in watch.status().items() if k != "log"}, **storage.stats()}
+            "watch": {k: v for k, v in watch.status().items() if k != "log"}, "storage": await _usage(),
+            **storage.stats()}
+
+
+_usage_cache = {"t": 0, "data": None}
+
+
+async def _usage(force=False):
+    """Använt utrymme (räknas om högst en gång per minut – det kan vara många filer)."""
+    if force or not _usage_cache["data"] or time.time() - _usage_cache["t"] > 60:
+        _usage_cache["data"] = await asyncio.to_thread(storage.usage)
+        _usage_cache["t"] = time.time()
+    return {**_usage_cache["data"], "max_mb": config.get("storage", "max_mb") or 0,
+            "days_to_keep": config.get("storage", "days_to_keep") or 0}
+
+
+@app.get("/api/storage")
+async def storage_usage(request: Request):
+    require(request)
+    return await _usage(force=True)
 
 
 def _priority():
@@ -1381,6 +1610,15 @@ async def service_worker():
                         headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 
+_index_html = {}
+
+
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(HERE, "static", "index.html"), headers={"Cache-Control": "no-cache"})
+    """index.html med versionsnummer i filadresserna, så att webbläsaren hämtar nya filer efter en uppdatering."""
+    if "html" not in _index_html:
+        with open(os.path.join(HERE, "static", "index.html"), encoding="utf-8") as f:
+            html = f.read()
+        v = f"{APP_VERSION}-{APP_BUILD}"
+        _index_html["html"] = re.sub(r'(/static/[\w./-]+\.(?:js|css))(?=")', rf"\1?v={v}", html)
+    return Response(_index_html["html"], media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"})

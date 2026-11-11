@@ -49,3 +49,9 @@ class FileResponse(Response):
     def __init__(self, path, status_code=200, headers=None, media_type=None, **kw):
         super().__init__(b"", status_code, headers, media_type)
         self.path = path
+
+
+class StreamingResponse(Response):
+    def __init__(self, content, status_code=200, headers=None, media_type=None):
+        super().__init__(b"", status_code, headers, media_type)
+        self.body_iterator = content

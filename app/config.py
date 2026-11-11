@@ -87,6 +87,7 @@ DEFAULTS = {
     },
     "storage": {
         "days_to_keep": 14,
+        "max_mb": 2000,         # högst så många MB bilder (0 = ingen gräns); det som inträffar först gäller
         "save_empty": False,    # spara även analyser utan träff
     },
     "public_url": "",           # adress till SynoArgus, används i länkar i larm
@@ -118,6 +119,7 @@ def camera_defaults(name, ss_id=None):
         "wait_ms": 0,
         "zones": [],            # [{x1,y1,x2,y2 (0-1), mode: contains|intersect}]
         "modes": [],            # lägen där kameran larmar, tom = alla
+        "stream_url": "",       # Översikt: egen adress till videoströmmen (tom = från Surveillance Station)
     }
 
 

@@ -15,6 +15,7 @@ mellan känslighet/tröskel och SynoArgus egen mätning är en uppskattning:
 Förslaget används aldrig automatiskt och kan ångras.
 """
 import asyncio
+import contextvars
 import json
 import logging
 import sqlite3
@@ -317,7 +318,7 @@ class CalibrationManager:
         r["walk_until"] = until
         self.engine.priority_until = until      # kalibreringen går före larm
         self.walk_info = {"camera": camera, "until": until, "frames": 0, "analysed": 0}
-        self._walk_task = asyncio.create_task(self._walk(r, until))
+        self._walk_task = asyncio.create_task(self._walk(r, until), context=contextvars.Context())
         return until
 
     def _stop_walk(self):

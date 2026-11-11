@@ -98,6 +98,41 @@ ev, core = play(lambda t: [walker(t)], 30); assert ev == [], ev
 # 11. someone walks into the picture and disappears in the middle of it (into darkness): enter, but no "linger"
 def vanish(t): return [swing(t)] + ([(-20 + 22 * t, 200, 10, 30)] if t < 8 else [])
 ev, core = play(vanish, 40); assert keys(ev) == ["enter"], ev
+# 12. the same image several times in a row (Surveillance Station is slower than the watch): still "motion"
+def play_dup(scene, seconds, dup):
+    cfg = watch.defaults(); cfg["zone"] = ZONE
+    core = watch.WatchCore(cfg, (H, W)); act = []
+    for i in range(int(seconds * FPS)):
+        t = i / FPS; k = (i // dup) * dup / FPS
+        core.feed(t, frame(scene(k))); act.append(core.zone_active)
+    return sum(act[3 * FPS:]) / len(act[3 * FPS:])
+for dup in (1, 2, 3, 4):
+    assert play_dup(lambda t: [swing(t)], 30, dup) > 0.9, dup
+
+# 13. a person close to the camera (large in the picture) is motion, not a change of light; a lamp is
+big = lambda t: [(150 + 40 * np.sin(2 * np.pi * t / 2), 60, 140, 200)]
+cfg = watch.defaults(); cfg["zone"] = {"x1": 0.2, "y1": 0.1, "x2": 0.8, "y2": 0.95}
+core = watch.WatchCore(cfg, (H, W))
+for i in range(60): core.feed(i / FPS, frame(big(i / FPS)))
+assert core.stats["skipped"] == 0 and core.zone_active, core.stats
+core.feed(20.4, BG.copy() + 60); assert core.stats["skipped"] == 1
+
+# 14. presence with AI: the occupant sits still -> quiet; nobody there any more -> empty (and the watch was told)
+def ai_run(seq, quiet_s=10, empty_s=10):
+    cfg = watch.defaults(); cfg["zone"] = ZONE; cfg["ai_presence"] = True
+    cfg["events"]["quiet"]["seconds"] = quiet_s; cfg["events"]["empty"]["seconds"] = empty_s
+    core = watch.WatchCore(cfg, (H, W)); ev = []
+    for i in range(int(60 * FPS)):
+        t = i / FPS
+        moving, present = seq(t)
+        ev += core.feed(t, frame([swing(t)] if moving else [(238, 120, 10, 22)] if present else []))
+        if i % (2 * FPS) == 0:
+            ev += core.presence(t, present)
+    return [(round(e["ts"]), e["key"]) for e in ev]
+ev = ai_run(lambda t: (t < 10, t < 40))         # swings, sits still 10..40, gone after 40
+assert [k for _, k in ev] == ["quiet", "empty"] and 46 <= ev[1][0] <= 52, ev
+ev = ai_run(lambda t: (False, t >= 20))        # empty at start, someone sits down at 20 s
+assert [k for _, k in ev] == ["arrive"], ev
 print("A logic OK")
 
 # ---- settings are checked

@@ -32,6 +32,9 @@ def init():
             ms INTEGER,
             notified TEXT)""")
         con.execute("CREATE INDEX IF NOT EXISTS ix_events_ts ON events(ts)")
+        cols = [r[1] for r in con.execute("PRAGMA table_info(events)")]
+        if "meta" not in cols:      # 0.7: händelsens text m.m. för notifieringar på begäran
+            con.execute("ALTER TABLE events ADD COLUMN meta TEXT")
 
 
 def save_event(camera, alarm, types, dets, jpeg, ms, notified=None):
@@ -50,6 +53,39 @@ def save_event(camera, alarm, types, dets, jpeg, ms, notified=None):
             (ts, camera, 1 if alarm else 0, json.dumps(types), json.dumps(dets), rel, ms,
              json.dumps(notified or [])))
         return cur.lastrowid, rel
+
+
+def events_between(start, end, camera=None, limit=2000):
+    q = "SELECT * FROM events WHERE ts >= ? AND ts <= ?"
+    args = [start, end]
+    if camera:
+        q += " AND camera = ?"
+        args.append(camera)
+    q += " ORDER BY ts LIMIT ?"
+    args.append(limit)
+    with _lock, _db() as con:
+        rows = con.execute(q, args).fetchall()
+    return [_row(r) for r in rows]
+
+
+def set_meta(event_id, meta):
+    with _lock, _db() as con:
+        con.execute("UPDATE events SET meta=? WHERE id=?", (json.dumps(meta, ensure_ascii=False), event_id))
+
+
+def get_event(event_id):
+    with _lock, _db() as con:
+        r = con.execute("SELECT * FROM events WHERE id=?", (int(event_id),)).fetchone()
+    return _row(r) if r else None
+
+
+def _row(r):
+    return {
+        "id": r["id"], "ts": r["ts"], "camera": r["camera"], "alarm": bool(r["alarm"]),
+        "types": json.loads(r["types"] or "[]"), "detections": json.loads(r["detections"] or "[]"),
+        "image": r["image"], "ms": r["ms"], "notified": json.loads(r["notified"] or "[]"),
+        "meta": json.loads(r["meta"] or "null") if "meta" in r.keys() else None,
+    }
 
 
 def set_notified(event_id, notified):
@@ -72,11 +108,7 @@ def list_events(limit=50, before=None, camera=None, only_alarms=False):
     args.append(limit)
     with _lock, _db() as con:
         rows = con.execute(q, args).fetchall()
-    return [{
-        "id": r["id"], "ts": r["ts"], "camera": r["camera"], "alarm": bool(r["alarm"]),
-        "types": json.loads(r["types"] or "[]"), "detections": json.loads(r["detections"] or "[]"),
-        "image": r["image"], "ms": r["ms"], "notified": json.loads(r["notified"] or "[]"),
-    } for r in rows]
+    return [_row(r) for r in rows]
 
 
 def stats():
@@ -98,6 +130,70 @@ def cleanup(days):
         p = os.path.join(CAPTURE_DIR, d)
         if os.path.isdir(p) and len(d) == 10 and d < limit_day:
             shutil.rmtree(p, ignore_errors=True)
+    return n
+
+
+def usage():
+    """Använt utrymme: bilder (MB, antal), databasen (MB) och antal händelser."""
+    img_bytes = img_n = 0
+    for root, _, files in os.walk(CAPTURE_DIR):
+        for f in files:
+            try:
+                img_bytes += os.path.getsize(os.path.join(root, f))
+                img_n += 1
+            except OSError:
+                pass
+    db_bytes = 0
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            db_bytes += os.path.getsize(DB_PATH + suffix)
+        except OSError:
+            pass
+    with _lock, _db() as con:
+        r = con.execute("SELECT COUNT(*) n, MIN(ts) first FROM events").fetchone()
+    mb = lambda b: round(b / 1048576, 1)
+    return {"images_mb": mb(img_bytes), "images": img_n, "db_mb": mb(db_bytes), "total_mb": mb(img_bytes + db_bytes),
+            "events": r["n"] or 0, "oldest": r["first"]}
+
+
+def enforce_size(max_mb):
+    """Tar bort de äldsta händelserna (med bilder) tills bilderna ryms inom max_mb. 0 = ingen gräns."""
+    if not max_mb or max_mb <= 0:
+        return 0
+    limit = max_mb * 1048576
+    files = []
+    total = 0
+    for root, _, names in os.walk(CAPTURE_DIR):
+        for f in names:
+            p = os.path.join(root, f)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            files.append((st.st_mtime, p, st.st_size))
+            total += st.st_size
+    if total <= limit:
+        return 0
+    files.sort()
+    removed = []
+    for _, p, size in files:
+        if total <= limit * 0.9:          # lite marginal så att det inte rensas vid varje ny bild
+            break
+        try:
+            os.remove(p)
+        except OSError:
+            continue
+        total -= size
+        removed.append(os.path.relpath(p, CAPTURE_DIR).replace(os.sep, "/"))
+    n = 0
+    with _lock, _db() as con:
+        for i in range(0, len(removed), 500):
+            part = removed[i:i + 500]
+            n += con.execute(f"DELETE FROM events WHERE image IN ({','.join('?' * len(part))})", part).rowcount
+    for d in os.listdir(CAPTURE_DIR):       # tomma dagmappar
+        p = os.path.join(CAPTURE_DIR, d)
+        if os.path.isdir(p) and not os.listdir(p):
+            os.rmdir(p)
     return n
 
 

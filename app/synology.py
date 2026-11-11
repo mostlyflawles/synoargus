@@ -1,5 +1,7 @@
 """Klient för Synology Surveillance Station och DSM-inloggning."""
 import asyncio
+import time
+import json
 import logging
 
 import httpx
@@ -204,6 +206,71 @@ class SurveillanceStation:
                 if e.code not in (102, 103, 104):
                     raise
         raise last
+
+    # -------------------------------------------------------- video (Översikt)
+    async def live_paths(self, cam_ids):
+        """Adresser till kamerornas liveström (RTSP m.m.) från Surveillance Station: {id: {...}}."""
+        data = await self._try_versions("SYNO.SurveillanceStation.Camera", "GetLiveViewPath", ("9", "8", "7"),
+                                        {"idList": ",".join(str(i) for i in cam_ids)})
+        items = data if isinstance(data, list) else (data or {}).get("pathInfos") or (data or {}).get("cameras") or []
+        out = {}
+        for it in items:
+            if isinstance(it, dict) and it.get("id") is not None:
+                out[int(it["id"])] = it
+        return out, data
+
+    async def recordings(self, cam_ids, start, end, limit=1000):
+        """Inspelningar mellan start och end (unix-sekunder): [{id, cam, start, stop, reason}], rådata."""
+        data = await self._try_versions("SYNO.SurveillanceStation.Recording", "List", ("6", "5", "4"), {
+            "offset": "0", "limit": str(limit), "cameraIds": ",".join(str(i) for i in cam_ids),
+            "fromTime": str(int(start)), "toTime": str(int(end))})
+        items = (data or {}).get("recordings") or (data or {}).get("events") or []
+        out = []
+        for it in items:
+            g = lambda *keys: next((it[k] for k in keys if it.get(k) not in (None, "")), None)
+            rid, cam = g("id", "recordingId", "eventId"), g("cameraId", "camera_id", "camId")
+            st, sp = g("startTime", "start_time", "startTm"), g("stopTime", "stop_time", "stopTm", "endTime")
+            if rid is None or cam is None or st is None:
+                continue
+            st = float(st)
+            sp = float(sp) if sp else time.time()      # pågående inspelning
+            if st > 1e11:                               # millisekunder
+                st, sp = st / 1000, (sp / 1000 if sp > 1e11 else sp)
+            out.append({"id": rid, "cam": int(cam), "start": st, "stop": max(st, sp),
+                        "reason": g("reason", "eventType", "recType")})
+        out.sort(key=lambda r: r["start"])
+        return out, data
+
+    async def open_recording(self, rec_id, offset_ms, play_ms):
+        """Öppnar en del av en inspelning som ström (mp4). Returnerar httpx-svaret – stäng det efteråt."""
+        async with self._lock:
+            if not self.sid:
+                await self._login()
+            sid = self.sid
+        url, *_ = self._settings()
+        client = self._http()
+        last = None
+        for v in ("6", "5", "4"):
+            req = client.build_request("GET", url + "/webapi/entry.cgi", params={
+                "api": "SYNO.SurveillanceStation.Recording", "version": v, "method": "Download",
+                "id": str(rec_id), "offsetTimeMs": str(int(offset_ms)), "playTimeMs": str(int(play_ms)), "_sid": sid},
+                timeout=httpx.Timeout(60.0, connect=5.0))
+            r = await client.send(req, stream=True)
+            ctype = r.headers.get("content-type", "")
+            if "json" not in ctype and "text" not in ctype:
+                return r
+            body = await r.aread()
+            await r.aclose()
+            try:
+                code = json.loads(body).get("error", {}).get("code", 100)
+            except Exception:
+                code = 100
+            last = SynologyError(code)
+            if code in (105, 106, 107, 119):
+                self.sid = None
+            if code not in (102, 103, 104):
+                break
+        raise last or SynologyError(100)
 
     async def action_rules(self):
         return await self._try_versions("SYNO.SurveillanceStation.ActionRule", "List", ("3", "2", "1"),

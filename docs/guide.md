@@ -16,12 +16,13 @@ If you leave a tab, camera or the page with unsaved changes, SynoArgus asks firs
 4. [Modes and Home Mode](#4-modes-and-home-mode)
 5. [Calibration](#5-calibration)
 6. [Watch (experimental)](#6-watch-experimental)
-7. [Control cameras via webhook](#7-control-cameras-via-webhook)
-8. [Install as an app (PWA) and https](#8-install-as-an-app-pwa-and-https)
-9. [Login with Synology SSO](#9-login-with-synology-sso-optional)
-10. [Own models (YOLO26 etc.)](#10-own-models-yolo26-etc)
-11. [Backup and restore](#11-backup-and-restore)
-12. [Security notes](#12-security-notes)
+7. [Overview (experimental)](#7-overview-experimental)
+8. [Control cameras via webhook](#8-control-cameras-via-webhook)
+9. [Install as an app (PWA) and https](#9-install-as-an-app-pwa-and-https)
+10. [Login with Synology SSO](#10-login-with-synology-sso-optional)
+11. [Own models (YOLO26 etc.)](#11-own-models-yolo26-etc)
+12. [Backup, restore and storage](#12-backup-restore-and-storage)
+13. [Security notes](#13-security-notes)
 13. [Troubleshooting](#troubleshooting)
 
 ---
@@ -141,11 +142,34 @@ In URLs the values are URL-encoded automatically. A clickable list is shown in t
 | `%time%` | `%tid%` | time | 22:58:14 |
 | `%date%` | `%datum%` | date | 2026-11-09 |
 | `%image%` | `%bild%` | link to the image in SynoArgus | http://…/captures/….jpg |
+| `%event_no%` | `%händelse_nr%` | the event number in SynoArgus | 42 |
 
 **Example – Homey:** webhook, method GET, URL
 `https://webhook.homey.app/<homey-id>/synoargus?tag=%camera%;%what%`.
 In Homey: *When* Logic > *A webhook is called*, event `synoargus`. The tag becomes e.g. `Backyard;Person`.
 Uncheck *Send image* – Homey's webhook does not accept images.
+
+`%event_no%` (`%händelse_nr%`) is the event number in SynoArgus – useful together with *Send only when called* below.
+
+### Send only when called
+
+Each notification has **Send: Immediately / Only when called (webhook)**. With *Only when called* nothing is sent when
+the event happens; another system decides – for example a home automation that only wants a phone notification when
+nobody is home:
+
+1. An ordinary notification (e.g. a webhook with `%event_no%` in the URL) tells your system about the event.
+2. Your system calls
+
+   ```
+   GET http://<NAS-IP>:8686/api/notify?token=<token>&notifier=<id or name>&event=<event no>
+   ```
+
+   and the notification is sent with the event's image and text. `&text=…` replaces the text. Without `event` the
+   latest event waiting for that notification is sent. The page shows the URL under each such notification.
+3. **Send anyway after X min** (0 = never) sends it anyway if nobody has called, marked *sent without confirmation*.
+
+Waiting notifications are marked ⏳ under Events and can be requested for 24 hours. A notification with no filters
+(all cameras, types and modes) gets a yellow warning.
 
 `%image%` links require being logged in to SynoArgus and are only reachable from your network (or VPN).
 Set the address used in links under Settings > Other > Storage.
@@ -299,7 +323,49 @@ stopping for two seconds, and insects flashing in the infrared light for a fract
   analysis takes 15–30 ms per image; a Celeron J3455 is several times slower, which is still well within 3 images/s.
 - It is an aid, not a guarantee.
 
-## 7. Control cameras via webhook
+### Check presence with AI
+
+Motion is not visible when someone sits completely still. With **Check presence with AI** the AI model looks at the zone
+(plus a margin) every other second. While it sees a person (or one of the camera's types) with at least 40 % confidence,
+the zone counts as occupied even without motion, and a new event becomes available: **Nobody in the zone any more**
+(`empty`, after X s without anyone). It costs CPU – use a small model.
+
+### Diagnostics
+
+The status shows images per second, the share of the zone that is moving (and the limit), images skipped as light
+changes and the share of **duplicates** – images identical to the previous one. Many duplicates mean Surveillance
+Station cannot deliver new snapshots fast enough; lower the images per second (1–4). **Show what the watch sees** draws
+the motion grid, the moving blobs and the zone on the current image. A zone larger than half the image gives a warning:
+when most of the picture is zone, a person close to the camera is easily taken for a light change.
+
+## 7. Overview (experimental)
+
+<img src="../app/static/guide/en-overview.png" alt="Overview" width="720">
+
+The **Overview** tab shows all cameras at once, much like Multi View in Surveillance Station:
+
+- **Layouts** 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
+- **Tap a camera** for full screen with sound.
+- **Controls:** *Last event* (plays from 3 s before the latest alarm), −1 min, −10 s, +10 s, +1 min, pause and **LIVE**.
+- **Timeline** at the bottom: recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play
+  from that point; scroll to the left to load earlier days.
+
+How it works:
+
+- Live video goes through **[go2rtc](https://github.com/AlexxIT/go2rtc)** (MIT), bundled in the image. It listens on
+  127.0.0.1 inside the container only; the browser talks to SynoArgus, which only lets logged-in users through.
+  The video is sent as fragmented MP4 over a WebSocket (Media Source Extensions); no extra port is opened.
+- The stream address (RTSP) is read from Surveillance Station. If a camera does not show, enter its own address under
+  **Cameras > Video stream for Overview**, e.g. `rtsp://user:password@192.168.1.20:554/stream1`. The address is masked
+  in exports without secrets.
+- **Sound:** AAC is passed through; G.711 (PCMA/PCMU) is converted by go2rtc. Browsers start video muted until you tap.
+- If live video cannot be played, the tile falls back to a snapshot every other second.
+- **Recordings** are played through SynoArgus from Surveillance Station's recording API, five minutes at a time. The
+  SynoArgus account must be allowed to view recordings (error 105 = missing permission).
+- *Show raw data for troubleshooting* shows what Surveillance Station returns, with passwords removed.
+- Each live tile is a stream from the NAS. Close the tab when you are not watching.
+
+## 8. Control cameras via webhook
 
 Turn the analysis for a camera on or off from Homey, Home Assistant, a script …
 (Surveillance Station itself is not affected):
@@ -315,7 +381,7 @@ GET http://<NAS-IP>:8686/api/control?token=<token>&camera=Hallway&action=on
 
 Settings > Other > *Control cameras (webhook)* builds the URL (with your token) for you.
 
-## 8. Install as an app (PWA) and https
+## 9. Install as an app (PWA) and https
 
 Under **Settings > Other > Install as an app** SynoArgus can be added to the home screen or desktop and opens in its
 own window. Browsers only allow this on **https**. On iPhone/iPad: Share > *Add to Home Screen*.
@@ -330,14 +396,15 @@ Setting up https with DSM:
 3. **Assign the certificate:** Control Panel > Security > Certificate > Settings – choose the certificate for the new service.
 4. Open `https://yourname.synology.me:8687`, log in and press *Install as an app*.
 
-If the address should only work at home, no port has to be opened to the internet, but the name must resolve to the
-NAS from inside (NAT loopback in the router or a local DNS entry). The Action Rules in Surveillance Station can keep
+**Do not open a port to the internet** for SynoArgus – use the address at home or over VPN (see
+[Security notes](#13-security-notes)). The name must resolve to the NAS from inside (NAT loopback in the router or a
+local DNS entry). The Action Rules in Surveillance Station can keep
 using the plain http address.
 
 SynoArgus trusts `X-Forwarded-For` / `X-Forwarded-Proto` only from a proxy on the local network (such as DSM's own
 reverse proxy), so login throttling and the "setup only from the home network" check cannot be fooled from outside.
 
-## 9. Login with Synology SSO (optional)
+## 10. Login with Synology SSO (optional)
 
 1. Install **SSO Server** from Package Center.
 2. SSO Server > **Service**: enable **OIDC** and set a server URL (e.g. `https://192.168.1.10:5001`).
@@ -351,7 +418,7 @@ reverse proxy), so login throttling and the "setup only from the home network" c
 If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS certificate* unchecked under Surveillance Station.
 **Allowed DSM accounts** apply to both password login and SSO.
 
-## 10. Own models (YOLO26 etc.)
+## 11. Own models (YOLO26 etc.)
 
 The built-in models are YOLOX tiny/s/m (Apache-2.0). You can add Ultralytics models such as **YOLO26** or **YOLO11**:
 
@@ -371,7 +438,7 @@ You can comment the block out afterwards to save space (and delete the converter
 
 > Ultralytics models are licensed **AGPL-3.0**. Using them is your choice; SynoArgus itself (MIT) does not include them.
 
-## 11. Backup and restore
+## 12. Backup, restore and storage
 
 Settings > Other > *Backup*:
 
@@ -380,10 +447,18 @@ Settings > Other > *Backup*:
 - **Import** replaces all settings. Passwords missing from the file (export without secrets) keep their current values.
 
 Images and history are not part of the export; they live in `data/captures` and `data/history.db`.
+Without secrets, webhook URLs, ntfy topics and camera stream addresses are masked too.
+
+**Storage** (Settings > Other): events are kept for X days **or** until the images take up Y MB, whichever comes first
+(default 14 days and 2000 MB, 0 = no size limit). The oldest are removed first, checked every 10 minutes. The space used
+is shown under Other and on Status.
 Every import is checked; invalid values are refused with the name of the field.
 
-## 12. Security notes
+## 13. Security notes
 
+- **Do not expose SynoArgus to the internet** – no port forwarding, no public reverse proxy. It shows your cameras and
+  recordings. When away, connect to the home network with a VPN (VPN Server in DSM, WireGuard in the router, Tailscale …)
+  and use the usual address. Alerts still reach you, since they are sent out from the NAS.
 - Passwords and keys are stored in plain text in `data/config.json`, readable by root only. SynoArgus keeps the
   previous version as `config.json.bak` and uses it if the file cannot be read.
 - The container log contains no passwords, session ids or webhook addresses (from 0.6). Logs from earlier versions may
@@ -427,8 +502,19 @@ Browsers only allow automatic copying on HTTPS pages; over HTTP SynoArgus select
 **The watch gives too many events**
 Run it in test mode, raise the times, turn on *Only when the zone is occupied* and put exclusion zones over trees and roads.
 
+**The watch only shows "quiet" although someone moves**
+Look at the diagnostics line. Many duplicates: lower the images per second. A small share of the zone moving: make the
+zone tighter or check *Show what the watch sees*. Try *Check presence with AI*.
+
+**Nothing happens when I press a button after an update**
+The browser may have kept old files. Reload the page; from 0.7 the files carry the version number and this is not needed.
+
+**Overview only shows still images**
+Live video could not be started. Open *Show raw data for troubleshooting*; if the address is empty or wrong, enter the
+camera's own RTSP address under Cameras > Video stream for Overview.
+
 **Install as an app is greyed out**
-The page must be opened over https, see [Install as an app](#8-install-as-an-app-pwa-and-https).
+The page must be opened over https, see [Install as an app](#9-install-as-an-app-pwa-and-https).
 
 **Logs**
 Container Manager > Container > synoargus > Log.

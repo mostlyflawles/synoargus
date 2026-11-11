@@ -39,6 +39,15 @@ Object.assign(EN, {
   'Starta': 'Start', 'Stoppa': 'Stop', 'Ta bort bevakningen': 'Remove the watch', 'Ta bort bevakningen för {cam}?': 'Remove the watch for {cam}?',
   'I notifieringar kan du använda %händelse% (texten) och %händelse_id% (t.ex. leave_toward).': 'In notifications you can use %event% (the text) and %event_id% (e.g. leave_toward).',
   'Rita en zon först.': 'Draw a zone first.', 'Bevakning pågår': 'Watch running',
+  'Kontrollera närvaro med AI': 'Check presence with AI',
+  'Var 2:a sekund frågar AI-modellen om någon av kamerans typer (annars person) finns i zonen. Då går det att skilja "sitter stilla" från "har gått". Fungerar när den som bevakas syns tydligt (inomhus, dagsljus, nära kameran) – inte på långt håll i mörker. Kostar en AI-analys varannan sekund.': 'Every 2 seconds the AI model is asked whether one of the camera\'s types (otherwise person) is in the zone. That tells "sitting still" from "has left". Works when whoever is watched is clearly visible (indoors, daylight, close to the camera) – not far away in the dark. Costs one AI analysis every other second.',
+  'Ingen i zonen längre': 'Nobody in the zone any more', 'AI:n har inte sett någon i zonen på X sekunder och zonen är stilla. Kräver närvarokontroll med AI.': 'The AI has not seen anyone in the zone for X seconds and the zone is quiet. Requires presence check with AI.',
+  'Zonen täcker mer än halva bilden. Bevakningen jämför zonen med resten av bilden – med en så stor zon finns nästan inget "utanför" att följa, så "kommer in i bild", "lämnar zonen" och "dröjer kvar" fungerar dåligt. Rita zonen runt det som ska bevakas.': 'The zone covers more than half of the picture. The watch compares the zone with the rest of the picture – with such a large zone there is hardly any "outside" to follow, so "enters the picture", "leaves the zone" and "lingers" work poorly. Draw the zone around what should be watched.',
+  'Felsökning: {d} % samma bild från Surveillance Station · {l} bilder hoppades över (ljusändring) · rörelse i zonen {z} (gräns {m})': 'Troubleshooting: {d} % the same image from Surveillance Station · {l} images skipped (light change) · motion in the zone {z} (limit {m})',
+  ' · AI: någon i zonen': ' · AI: someone in the zone', ' · AI: ingen i zonen': ' · AI: nobody in the zone',
+  'Visa vad bevakningen ser': 'Show what the watch sees', 'Dölj': 'Hide',
+  'Blått = zonen, rött = rörelse mellan de två senaste bilderna, orange = spår som rör sig. Uppdateras varannan sekund.': 'Blue = the zone, red = motion between the two latest images, orange = moving tracks. Updated every other second.',
+  'Surveillance Station lämnar ofta samma bild flera gånger. Sänk bilder per sekund – fler bilder ger ingen ny information.': 'Surveillance Station often returns the same image several times. Lower the images per second – more images give no new information.',
 });
 
 const WATCH_EVENTS = [
@@ -49,6 +58,7 @@ const WATCH_EVENTS = [
   ['leave_other', 'Lämnar zonen, åt annat håll', 'Någon går från zonen åt något annat håll.', []],
   ['enter', 'Någon kommer in i bild', 'Rörelse som inte började vid zonen, t.ex. någon som går förbi.', [['seconds', 'minst (s)', 1, 60]]],
   ['linger', 'Dröjer kvar', 'Den som kom in i bild stannar vid zonen eller blir kvar i bilden.', [['seconds', 'stannat i (s)', 3, 600], ['stay_seconds', 'kvar i bild i (s)', 10, 3600]]],
+  ['empty', 'Ingen i zonen längre', 'AI:n har inte sett någon i zonen på X sekunder och zonen är stilla. Kräver närvarokontroll med AI.', [['seconds', 'efter (s)', 5, 3600]]],
   ['timeout', 'Bevakningen har pågått länge', 'Påminnelse om att bevakningen fortfarande är igång.', [['minutes', 'efter (min)', 1, 1440]]],
 ];
 
@@ -63,13 +73,14 @@ async function renderWatch() {
   const cam = S.wcam, enc = encodeURIComponent(cam);
   const saved = data.watches[cam];
   const Wt = JSON.parse(JSON.stringify(saved || data.defaults));
-  let status = data.status, calibrating = data.calibration, timer = null, alive = true;
+  let status = data.status, calibrating = data.calibration, timer = null, alive = true, dbg = false;
   stoppers.add(() => { alive = false; clearTimeout(timer); window.onresize = null; });
   const notis = S.cfg.notifiers || [];
 
   const evHtml = ([key, title, desc, params]) => {
     const e = Wt.events[key];
-    return `<div class="wev" data-ev="${key}">
+    if (!e) return '';
+    return `<div class="wev" data-ev="${key}" ${key === 'empty' && !Wt.ai_presence ? 'hidden' : ''}>
       <label class="check"><input type="checkbox" data-f="on" ${e.on ? 'checked' : ''}> <b>${t(title)}</b></label>
       <div class="muted small">${t(desc)}</div>
       <div class="wev-body" ${e.on ? '' : 'hidden'}>
@@ -98,11 +109,13 @@ async function renderWatch() {
     <div class="zonebox" id="wBox" hidden><img id="wImg" alt=""><canvas id="wCanvas"></canvas></div>
     <div class="small" id="wZoneInfo"></div>
     <div class="grid" style="margin-top:12px">
-      <label class="f">${t('Bilder per sekund')}<select id="wFps">${[2, 3, 4].map(f => `<option ${Wt.fps === f ? 'selected' : ''}>${f}</option>`).join('')}</select></label>
+      <label class="f">${t('Bilder per sekund')}<select id="wFps">${[1, 2, 3, 4].map(f => `<option ${Wt.fps === f ? 'selected' : ''}>${f}</option>`).join('')}</select></label>
       <label class="f">${t('Stoppa automatiskt efter (min, 0 = aldrig)')}<input type="number" id="wAuto" min="0" max="1440" value="${Wt.auto_stop_min}"></label>
     </div>
     <label class="check"><input type="checkbox" id="wTest" ${Wt.test ? 'checked' : ''}> ${t('Testläge (logga bara, skicka inget)')}</label>
     <label class="check"><input type="checkbox" id="wExcl" ${Wt.use_exclusion_zones ? 'checked' : ''}> ${t('Räkna inte rörelse i kamerans uteslutningszoner')}</label>
+    <label class="check"><input type="checkbox" id="wAi" ${Wt.ai_presence ? 'checked' : ''}> ${t('Kontrollera närvaro med AI')}</label>
+    <p class="muted small" style="margin:2px 0 0 26px">${t('Var 2:a sekund frågar AI-modellen om någon av kamerans typer (annars person) finns i zonen. Då går det att skilja "sitter stilla" från "har gått". Fungerar när den som bevakas syns tydligt (inomhus, dagsljus, nära kameran) – inte på långt håll i mörker. Kostar en AI-analys varannan sekund.')}</p>
   </div>
   <div class="panel"><h3>${t('Vad ska ge en händelse?')}</h3>
     <div id="wEvents">${WATCH_EVENTS.map(evHtml).join('')}</div>
@@ -123,6 +136,7 @@ async function renderWatch() {
   const clampNum = (el) => { const v = Number(el.value); return Number.isFinite(v) ? v : 0; };
   const collect = () => {
     Wt.fps = Number($('#wFps').value); Wt.auto_stop_min = clampNum($('#wAuto')); Wt.test = $('#wTest').checked; Wt.use_exclusion_zones = $('#wExcl').checked;
+    Wt.ai_presence = $('#wAi').checked;
     Wt.stop_on = [];
     $$('#wEvents .wev').forEach(box => {
       const e = Wt.events[box.dataset.ev];
@@ -147,7 +161,9 @@ async function renderWatch() {
   const canvas = $('#wCanvas'), img = $('#wImg');
   const zoneInfo = () => {
     const z = Wt.zone;
-    $('#wZoneInfo').innerHTML = z ? esc(t('Zon: {w} × {h} % av bilden', { w: Math.round((z.x2 - z.x1) * 100), h: Math.round((z.y2 - z.y1) * 100) })) : `<span class="muted">${t('Ingen zon ritad ännu.')}</span>`;
+    $('#wZoneInfo').innerHTML = z ? esc(t('Zon: {w} × {h} % av bilden', { w: Math.round((z.x2 - z.x1) * 100), h: Math.round((z.y2 - z.y1) * 100) }))
+      + ((z.x2 - z.x1) * (z.y2 - z.y1) > 0.5 ? `<p class="warnbox">⚠ ${esc(t('Zonen täcker mer än halva bilden. Bevakningen jämför zonen med resten av bilden – med en så stor zon finns nästan inget "utanför" att följa, så "kommer in i bild", "lämnar zonen" och "dröjer kvar" fungerar dåligt. Rita zonen runt det som ska bevakas.'))}</p>` : '')
+      : `<span class="muted">${t('Ingen zon ritad ännu.')}</span>`;
   };
   const draw = temp => {
     if ($('#wBox').hidden) return;
@@ -172,6 +188,7 @@ async function renderWatch() {
   });
   window.onresize = () => draw();
   $('#wExcl').onchange = () => draw();
+  $('#wAi').onchange = () => { const b = $('#wEvents .wev[data-ev="empty"]'); if (b) b.hidden = !$('#wAi').checked; };
   const loadSnap = async () => {
     $('#wSnap').disabled = true;
     try {
@@ -191,6 +208,7 @@ async function renderWatch() {
   const hhmm = ts => new Date(ts * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE');
   const drawStatus = () => {
     const box = $('#wStatus'); if (!box) return;
+    const oldImg = box.querySelector('.wdebug');
     const mine = status.active === cam, other = status.active && !mine ? status.active : null;
     let head;
     if (mine) {
@@ -200,7 +218,11 @@ async function renderWatch() {
         ${status.test ? `<p class="warnbox">${t('Testläge: händelser loggas här men inget skickas')}</p>` : ''}
         ${status.error ? `<p class="warnbox">⚠ ${esc(t('Kan inte hämta bilder: {e}', { e: status.error }))}</p>` : ''}
         ${st ? `<p class="small" style="margin:8px 0 0">${esc(t('Zonen: {o} · {a}', { o: st.occupied ? t('upptagen') : t('tom'), a: st.zone_active ? t('rörelse') : t('stilla') }))}
-          <span class="muted"> · ${esc(t('{f} bilder/s · {ms} ms per bild · hämtning {s} ms', { f: status.fps, ms: status.ms, s: status.snapshot_ms }))}</span></p>` : ''}`;
+          <span class="muted"> · ${esc(t('{f} bilder/s · {ms} ms per bild · hämtning {s} ms', { f: status.fps, ms: status.ms, s: status.snapshot_ms }))}</span></p>
+          <p class="small muted" style="margin:4px 0 0">${esc(t('Felsökning: {d} % samma bild från Surveillance Station · {l} bilder hoppades över (ljusändring) · rörelse i zonen {z} (gräns {m})', { d: status.duplicates || 0, l: st.skipped || 0, z: st.zone_px || 0, m: st.zone_min || 0 }))}${status.ai_presence && st.ai_present != null ? esc(t(st.ai_present ? ' · AI: någon i zonen' : ' · AI: ingen i zonen')) : ''}</p>
+          ${(status.duplicates || 0) >= 50 ? `<p class="warnbox">⚠ ${esc(t('Surveillance Station lämnar ofta samma bild flera gånger. Sänk bilder per sekund – fler bilder ger ingen ny information.'))}</p>` : ''}` : ''}
+        <div class="row" style="margin-top:8px"><button class="btn" data-w="debug">${dbg ? t('Dölj') : t('Visa vad bevakningen ser')}</button></div>
+        ${dbg ? `<p class="muted small" style="margin:6px 0">${t('Blått = zonen, rött = rörelse mellan de två senaste bilderna, orange = spår som rör sig. Uppdateras varannan sekund.')}</p><img class="wdebug" src="/api/watches/${enc}/debug.jpg?_=${Date.now()}" alt="" style="width:100%;border-radius:8px">` : ''}`;
     } else {
       const block = other ? t('En bevakning pågår redan på {cam}. Stoppa den först.', { cam: other })
         : calibrating ? t('En kalibrering pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.', { cam: calibrating }) : '';
@@ -215,6 +237,11 @@ async function renderWatch() {
       <div class="wlog">${log.map(l => `<div class="small"><span class="muted">${hhmm(l.ts)}</span> ${esc(l.text)}
         ${l.test ? `<span class="tag">${t('test')}</span>` : ''}${l.ignored ? `<span class="tag">${t('ignorerad')}</span>` : ''}
         ${(l.sent || []).map(s => `<span class="tag ${s.ok ? 'ok' : 'err'}" title="${esc(s.error || '')}">${s.ok ? '✓' : '✗'} ${esc(s.name)}</span>`).join(' ')}</div>`).join('') || `<span class="muted small">${t('Inga händelser ännu.')}</span>`}</div>`;
+    const ni = box.querySelector('.wdebug');
+    if (ni && oldImg) {      // byt bild först när den nya har laddats (inget flimmer)
+      const next = ni.src; ni.src = oldImg.src;
+      const pre = new Image(); pre.onload = () => { ni.src = next; }; pre.src = next;
+    }
     $$('.camlist .chip').forEach(b => { b.textContent = b.dataset.cam + (status.active === b.dataset.cam ? ' ●' : ''); });
     setWatchPill(status.active);
   };
@@ -225,6 +252,7 @@ async function renderWatch() {
   };
   $('#wStatus').addEventListener('click', async e => {
     const a = e.target.dataset.w; if (!a) return;
+    if (a === 'debug') { dbg = !dbg; drawStatus(); return; }
     if (a !== 'stop' && ((S.dirty && S.dirty()) || !saved)) { toast(t(Wt.zone ? 'Spara bevakningen innan du startar den.' : 'Rita en zon först.'), true); return; }
     e.target.disabled = true;
     try { status = await api(`/api/watches/${enc}/action`, { method: 'POST', body: { action: a === 'stop' ? 'stop' : 'start', occupied: a === 'start-occ' } }); }

@@ -16,6 +16,7 @@ Händelser:
 WatchCore är fristående (numpy + Pillow) så att den kan provas mot inspelade klipp.
 """
 import asyncio
+import contextvars
 import io
 import logging
 import time
@@ -33,9 +34,9 @@ log = logging.getLogger("synoargus.watch")
 W = 480                     # arbetsbredd i pixlar (höjden följer bildens proportioner)
 CELL = 6                    # rutnät för att hitta sammanhängande rörelse
 PIX_DIFF = 12               # så mycket måste en pixel ändras (0–255)
-GLOBAL_SKIP = 0.20          # ändras mer än så av hela bilden är det ljus/exponering, inte rörelse
+GLOBAL_SKIP = 0.60          # ändras mer än så av bildens rutor är det ljus/exponering, inte rörelse
 ZONE_WINDOW = 6.0           # sekunder som zonens aktivitet bedöms över
-ZONE_ACTIVE_SHARE = 0.4     # andel bilder i fönstret med rörelse för att zonen ska räknas som aktiv
+ZONE_ACTIVE_SHARE = 0.4     # andel sekunder i fönstret med rörelse för att zonen ska räknas som aktiv
 ZONE_ARRIVE_S = 5.0         # zonen aktiv så länge utan känd ankomst = ankomst
 ARRIVE_DELAY = 6.0          # ett spår som tar slut vid zonen räknas som ankomst efter så lång tid
 LOST_AFTER = 1.2            # sekunder utan träff innan ett spår räknas som stilla/försvunnet
@@ -48,7 +49,9 @@ VISITOR_S = 8.0             # så länge efter ett besök vid zonen räknas nya 
 STEAL_MAX = 4.0             # så länge får ett spår som går in i zonen följas där (någon som går förbi)
 BG_ALPHA = 0.05             # hur snabbt bakgrunden följer ljusändringar
 PRESENT_SHARE = 0.12        # andel av ytan som måste skilja sig från bakgrunden för att någon ska stå kvar
-EVENT_KEYS = ("arrive", "quiet", "resume", "leave_toward", "leave_other", "enter", "linger", "timeout")
+EVENT_KEYS = ("arrive", "quiet", "resume", "leave_toward", "leave_other", "enter", "linger", "empty", "timeout")
+AI_EVERY_S = 2.0            # närvarokontroll med AI: så ofta frågas modellen
+AI_MIN_CONF = 40            # så säker måste AI:n vara för att någon ska räknas som närvarande
 VEHICLES = ("car", "truck", "bus", "motorcycle", "bicycle", "train", "boat")
 
 DEFAULT_EVENTS = {
@@ -59,14 +62,15 @@ DEFAULT_EVENTS = {
     "leave_other": {"on": True},
     "enter": {"on": True, "seconds": 3, "ignore_vehicles": True, "only_occupied": True, "cooldown": 30},
     "linger": {"on": True, "seconds": 12, "stay_seconds": 60, "cooldown": 30},
+    "empty": {"on": True, "seconds": 20},      # bara med närvarokontroll med AI
     "timeout": {"on": True, "minutes": 90},
 }
-SECONDS_LIMITS = {"quiet": (5, 3600), "enter": (1, 60), "linger": (3, 600)}
+SECONDS_LIMITS = {"quiet": (5, 3600), "enter": (1, 60), "linger": (3, 600), "empty": (5, 3600)}
 
 
 def defaults():
     return {"zone": None, "fps": 3, "test": False, "auto_stop_min": 120, "stop_on": ["leave_toward"],
-            "use_exclusion_zones": True,
+            "use_exclusion_zones": True, "ai_presence": False,
             "events": {k: {**v, "text": "", "notifiers": []} for k, v in DEFAULT_EVENTS.items()}}
 
 
@@ -80,7 +84,8 @@ def clean(body):
         if z["x2"] - z["x1"] < 0.02 or z["y2"] - z["y1"] < 0.02:
             raise validate.Invalid("zone")
         out["zone"] = z
-    out["fps"] = validate._int(body.get("fps", 3), "fps", 2, 4)
+    out["fps"] = validate._int(body.get("fps", 3), "fps", 1, 4)
+    out["ai_presence"] = bool(body.get("ai_presence"))
     out["test"] = bool(body.get("test"))
     out["use_exclusion_zones"] = bool(body.get("use_exclusion_zones", True))
     out["auto_stop_min"] = validate._int(body.get("auto_stop_min", 120), "auto_stop_min", 0, 1440)
@@ -209,7 +214,12 @@ class WatchCore:
         self.fired_at = {}
         self.visitor_ts = -1e9      # senast ett spår utifrån var vid zonen
         self.last_ts = None
-        self.stats = {"frames": 0, "skipped": 0}
+        self.stats = {"frames": 0, "skipped": 0, "zone_px": 0, "zone_min": 0}
+        self.last_diff = None
+        self.last_blobs = []
+        self.ai_present = None      # närvarokontroll med AI: True/False/None (inte kontrollerat)
+        self.ai_seen = None         # senast AI:n såg någon i zonen
+        self.ai_started = False
 
     # ---------------------------------------------------------------- hjälpare
     def _in(self, box, p):
@@ -320,9 +330,13 @@ class WatchCore:
             return events
         self.last_ts = ts
         diff = np.abs(gray - prev) > PIX_DIFF
-        if diff.mean() > GLOBAL_SKIP:
-            self.stats["skipped"] += 1
-            return events
+        if diff.mean() > 0.05:
+            # ljusändring (lampa, exponering, moln) påverkar hela bilden; en person nära kameran bara en del av den
+            d = diff[:self.gh * CELL, :self.gw * CELL].reshape(self.gh, CELL, self.gw, CELL).sum(axis=(1, 3))
+            if (d >= 3).mean() > GLOBAL_SKIP:
+                self.stats["skipped"] += 1
+                self.last_diff = diff
+                return events
 
         # ---- bakgrunden följer ljuset, utom där något rör sig eller nyss slutade röra sig
         all_blobs = self._blobs(diff)
@@ -346,11 +360,18 @@ class WatchCore:
 
         # ---- zonen
         z = self.zone
-        zact = int(diff[max(0, z[1]):z[3], max(0, z[0]):z[2]].sum()) >= self.zone_min
+        zpx = int(diff[max(0, z[1]):z[3], max(0, z[0]):z[2]].sum())
+        zact = zpx >= self.zone_min
+        self.stats["zone_px"], self.stats["zone_min"] = zpx, self.zone_min
+        self.last_diff, self.last_blobs = diff, blobs
         self.zone_hist.append((ts, zact))
         while self.zone_hist and ts - self.zone_hist[0][0] > ZONE_WINDOW:
             self.zone_hist.popleft()
-        share = sum(1 for _, a in self.zone_hist if a) / len(self.zone_hist)
+        # per sekund: en sekund med rörelse i någon bild räknas (tål upprepade bilder och ojämn bildtakt)
+        secs = {}
+        for t_, a_ in self.zone_hist:
+            secs[int(t_)] = secs.get(int(t_), False) or a_
+        share = sum(secs.values()) / len(secs)
         warm = ts - self.t_start >= min(ZONE_WINDOW, 3.0)
         active = warm and share >= ZONE_ACTIVE_SHARE
         if warm and self.start_active is None:
@@ -484,6 +505,49 @@ class WatchCore:
         self.tracks = keep
         return events
 
+    def presence(self, ts, present):
+        """Resultat från närvarokontrollen med AI (någon i zonen eller inte). Returnerar händelser."""
+        events = []
+        first = self.ai_present is None
+        self.ai_present = present
+        if present:
+            self.ai_seen = ts
+            if self.occ == 0:
+                self.occ = 1
+                if not first:
+                    self._emit(events, "arrive", ts, via="ai")
+            return events
+        if first:
+            self.ai_seen = None if self.occ == 0 else ts
+            return events
+        e = self.cfg["events"]["empty"]
+        if self.occ > 0 and self.ai_seen is not None and not self.zone_active and ts - self.ai_seen >= e["seconds"]:
+            self.occ = 0
+            self.ai_seen = None
+            self.quiet_fired = True         # ingen "stilla i zonen" efter att zonen har tömts
+            self._emit(events, "empty", ts, seconds=e["seconds"])
+        return events
+
+    def debug_image(self, jpeg, zone):
+        """Senaste bilden med det bevakningen ser: zonen (blå), rörelse (röd) och rörliga spår (orange)."""
+        img = Image.open(io.BytesIO(jpeg)).convert("RGB")
+        iw, ih = img.size
+        if self.last_diff is not None:
+            m = Image.fromarray((self.last_diff[:self.h, :self.w] * 255).astype(np.uint8)).resize((iw, ih), Image.NEAREST)
+            red = Image.new("RGB", (iw, ih), (255, 40, 40))
+            img = Image.composite(Image.blend(img, red, 0.6), img, m)
+        d = ImageDraw.Draw(img)
+        lw = max(2, round(iw / 400))
+        sx, sy = iw / self.w, ih / self.h
+        d.rectangle([zone["x1"] * iw, zone["y1"] * ih, zone["x2"] * iw, zone["y2"] * ih], outline=(64, 156, 255), width=lw)
+        for t in self.tracks:
+            if t.bbox and not t.lost:
+                x1, y1, x2, y2 = t.bbox
+                d.rectangle([x1 * sx, y1 * sy, x2 * sx, y2 * sy], outline=(255, 160, 0) if t.real else (200, 200, 200), width=lw)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=80)
+        return buf.getvalue()
+
     def _box(self, bbox):
         x1, y1, x2, y2 = bbox
         return (slice(max(0, int(y1) - CELL), min(self.h, int(y2) + CELL)),
@@ -499,7 +563,7 @@ class WatchCore:
 
     def state(self):
         return {"occupied": self.occ, "zone_active": bool(self.zone_active), "tracks": sum(1 for t in self.tracks if not t.lost),
-                **self.stats}
+                "ai_present": self.ai_present, **self.stats}
 
 
 # ====================================================================== körning
@@ -512,6 +576,7 @@ TITLES = {
     "leave_other": "Lämnar zonen, åt annat håll",
     "enter": "Någon kommer in i bild",
     "linger": "Någon dröjer kvar",
+    "empty": "Ingen i zonen längre",
     "timeout": "Bevakningen har pågått länge",
 }
 
@@ -545,6 +610,8 @@ class WatchManager:
             out.update(since=a["started"], elapsed=round(time.time() - a["started"]), test=a["test"],
                        source=a["source"], fps=round(a.get("fps", 0), 1), ms=round(a.get("ms", 0)),
                        snapshot_ms=round(a.get("snap_ms", 0)), error=a.get("error"),
+                       duplicates=round(100 * a.get("dups", 0) / max(1, a.get("got", 0))),
+                       ai_presence=bool((self.get(a["camera"]) or {}).get("ai_presence")),
                        state=core.state() if core else None)
         return out
 
@@ -568,7 +635,7 @@ class WatchManager:
         self.active = {"camera": camera, "started": time.time(), "core": None, "source": source,
                        "test": bool(w.get("test")), "occupied": bool(occupied), "timeout_fired": False}
         self._note(camera, "start", tr("Bevakningen startade ({src})", src=tr(source)))
-        self._task = asyncio.create_task(self._run(camera))
+        self._task = asyncio.create_task(self._run(camera), context=contextvars.Context())
         return True
 
     async def stop(self, reason="manuellt"):
@@ -607,11 +674,24 @@ class WatchManager:
                         cam_id = await self.ss.resolve_id(camera)
                     jpeg = await self.ss.snapshot(cam_id)
                     a["snap_ms"] = 0.8 * a.get("snap_ms", 0) + 0.2 * (time.time() - t0) * 1000 if a.get("snap_ms") else (time.time() - t0) * 1000
-                    t1 = time.time()
-                    events = await asyncio.to_thread(self._feed, a, w, cam, t0, jpeg)
-                    ms = (time.time() - t1) * 1000
-                    a["ms"] = 0.8 * a["ms"] + 0.2 * ms if a.get("ms") else ms
-                    a["jpeg"] = jpeg
+                    a["got"] = a.get("got", 0) + 1
+                    digest = hash(jpeg)
+                    if digest == a.get("digest"):
+                        # Surveillance Station lämnade samma bild igen: ingen ny information
+                        a["dups"] = a.get("dups", 0) + 1
+                        events = []
+                    else:
+                        a["digest"] = digest
+                        t1 = time.time()
+                        events = await asyncio.to_thread(self._feed, a, w, cam, t0, jpeg)
+                        ms = (time.time() - t1) * 1000
+                        a["ms"] = 0.8 * a["ms"] + 0.2 * ms if a.get("ms") else ms
+                        a["jpeg"] = jpeg
+                    if w.get("ai_presence") and a.get("core") and t0 - a.get("ai_t", 0) >= AI_EVERY_S and a.get("jpeg"):
+                        a["ai_t"] = t0
+                        present = await asyncio.to_thread(self._ai_present, a["jpeg"], w, cam)
+                        if present is not None:
+                            events += a["core"].presence(t0, present)
                     a["error"] = None
                 except asyncio.CancelledError:
                     raise
@@ -647,6 +727,29 @@ class WatchManager:
             if self.active is a:
                 self.active = None
                 self._note(camera, "stop", tr("Bevakningen stoppades ({src})", src=tr("fel")))
+
+    def _ai_present(self, jpeg, w, cam):
+        """Närvarokontroll: finns någon av kamerans typer (annars person) i zonen? None om AI:n inte kan svara."""
+        try:
+            self.engine.ensure_model()
+            img = Image.open(io.BytesIO(jpeg)).convert("RGB")
+            iw, ih = img.size
+            z = w["zone"]
+            mx, my = (z["x2"] - z["x1"]) * 0.15, (z["y2"] - z["y1"]) * 0.15
+            box = (max(0, (z["x1"] - mx) * iw), max(0, (z["y1"] - my) * ih), min(iw, (z["x2"] + mx) * iw), min(ih, (z["y2"] + my) * ih))
+            dets = self.engine.detector.detect(img.crop(tuple(int(v) for v in box)))
+            wanted = set(cam.get("types") or ["person"])
+            return any(d["label"] in wanted and d.get("confidence", 0) >= AI_MIN_CONF for d in dets)
+        except Exception as e:
+            log.debug("Bevakning, närvaro: %s", e)
+            return None
+
+    def debug(self, camera):
+        """Bild som visar vad bevakningen ser just nu (eller None)."""
+        a = self.active
+        if not a or a["camera"] != camera or not a.get("core") or not a.get("jpeg"):
+            return None
+        return a["core"].debug_image(a["jpeg"], self.get(camera)["zone"])
 
     def _feed(self, a, w, cam, ts, jpeg):
         gray = decode_small(jpeg)
@@ -737,10 +840,13 @@ class WatchManager:
             chosen = w["events"][key].get("notifiers") or []
             targets = [n for n in self.cfg.get("notifiers") or [] if n.get("enabled", True) and (
                 n["id"] in chosen if chosen else notifiers.applies(n, camera, n.get("types") or ["x"], mode))]
-            results = await asyncio.gather(*(notifiers.send(n, event, image) for n in targets))
-            sent = [{"id": n["id"], "name": n.get("name") or n["type"], "ok": ok, "error": err}
-                    for n, (ok, err) in zip(targets, results)]
-            storage.set_notified(event_id, sent)
+            if self.engine.dispatcher:
+                sent = await self.engine.dispatcher.send(event, image, targets)
+            else:
+                results = await asyncio.gather(*(notifiers.send(n, event, image) for n in targets))
+                sent = [{"id": n["id"], "name": n.get("name") or n["type"], "ok": ok, "error": err}
+                        for n, (ok, err) in zip(targets, results)]
+                storage.set_notified(event_id, sent)
         except Exception as ex:
             log.warning("Bevakning %s, %s: %s", camera, key, ex)
         self._note(camera, key, text, sent=sent)

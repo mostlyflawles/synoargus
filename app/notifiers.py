@@ -40,6 +40,7 @@ def placeholder_values(event):
         "tid": dt.strftime("%H:%M:%S"),
         "datum": dt.strftime("%Y-%m-%d"),
         "bild": event.get("image_url") or "",
+        "händelse_nr": str(event.get("event_id") or ""),     # för /api/notify
     }
     # engelska namn på samma platshållare
     for en, sv in ALIASES.items():
@@ -49,7 +50,7 @@ def placeholder_values(event):
 
 ALIASES = {"camera": "kamera", "what": "vad", "what_en": "vad_en", "count": "antal", "message": "meddelande",
            "confidence": "säkerhet", "time": "tid", "date": "datum", "image": "bild", "event": "händelse",
-           "event_id": "händelse_id"}
+           "event_id": "händelse_id", "event_no": "händelse_nr"}
 
 
 def has_placeholders(text):
@@ -62,7 +63,8 @@ def render(template, event, url=False):
 
     def rep(m):
         key = m.group(1).lower()
-        key = {"sakerhet": "säkerhet", "handelse": "händelse", "handelse_id": "händelse_id"}.get(key, key)
+        key = {"sakerhet": "säkerhet", "handelse": "händelse", "handelse_id": "händelse_id",
+               "handelse_nr": "händelse_nr"}.get(key, key)
         if key not in vals:
             return m.group(0)
         return quote(vals[key], safe="") if url else vals[key]
@@ -71,7 +73,9 @@ def render(template, event, url=False):
 
 def new_notifier(kind):
     base = {"id": uuid.uuid4().hex[:8], "type": kind, "name": "", "enabled": True,
-            "cameras": [], "types": [], "modes": []}
+            "cameras": [], "types": [], "modes": [],
+            "deliver": "direct",    # direct | request (skickas bara när /api/notify anropas)
+            "fallback_min": 0}      # request: skicka ändå efter så många minuter (0 = aldrig)
     if kind == "pushbullet":
         base.update({"api_key": "", "device_iden": "", "send_image": True, "title": "", "body": ""})
     elif kind == "webhook":

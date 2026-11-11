@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7 (build 12) – 2026-11-11
+- **Overview** (experimental), new tab: all cameras live in a grid (1×2, 1×3, 2×2, 2×3, pages if there are more cameras), tap for full screen with sound, *Last event*, −1 min, −10 s, +10 s, +1 min, pause and LIVE, and a scrollable timeline with Surveillance Station recordings and SynoArgus events. Live video via the bundled [go2rtc](https://github.com/AlexxIT/go2rtc) (MIT), which listens on 127.0.0.1 only; SynoArgus passes the video to logged-in users over a WebSocket. Falls back to snapshots if live video cannot be played. Optional own stream address per camera. Raw data for troubleshooting.
+- **Watch:**
+  - Fixed: the watch could show "quiet" while someone moved. Identical snapshots from Surveillance Station are skipped, zone activity is judged per second instead of per image, and a large person close to the camera is no longer taken for a light change.
+  - **Check presence with AI** (per watch): the AI looks at the zone every other second; a person sitting still keeps the zone occupied, and a new event *Nobody in the zone any more*.
+  - Diagnostics: duplicates, share of the zone moving, skipped images, and *Show what the watch sees* (an image with motion and zone). Warning when the zone covers more than half the image. 1–4 images per second.
+- **Notifications sent on request:** per notification *Send: Immediately / Only when called (webhook)*. Another system asks for it with `/api/notify?token=…&notifier=…&event=…[&text=…]`, optionally sent anyway after X minutes. New placeholder `%event_no%` / `%händelse_nr%`. Waiting notifications are marked ⏳ under Events. Warning for a notification without filters.
+- **Export without secrets** also masks webhook URLs, ntfy topics and camera stream addresses.
+- **Storage:** keep X days **or** at most Y MB, whichever comes first (default 14 days, 2000 MB). Space used shown under Other and Status.
+- **Language before login:** the browser's language (Swedish or English) is used until you choose; the choice is stored in the browser.
+- Fixed: after an update the browser could keep an old `app.js`, so buttons (e.g. under Watch) did nothing. Script and style URLs now carry the version and static files are sent with `no-cache`.
+- README and guide: do not expose SynoArgus to the internet – use a VPN when away.
+
 ## 0.6.1 (build 11) – 2026-11-11
 - Fixed: the tests failed on GitHub because a test helper used a package (Starlette) that is not installed there. The tests now need only NumPy and Pillow.
 - GitHub Actions: `actions/checkout@v5` and `actions/setup-python@v6` (Node 24), runners pinned to Ubuntu 24.04.

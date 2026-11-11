@@ -13,6 +13,16 @@ function stopAll() { stoppers.forEach(f => { try { f(); } catch (e) { /* */ } })
 
 /* ---------------------------------------------------------------- språk */
 const EN = {
+  'Översikt': 'Overview', 'Videoström för Översikt (valfri)': 'Video stream for Overview (optional)', 'Tom = strömmen från Surveillance Station': 'Empty = the stream from Surveillance Station',
+  'Behövs bara om Översikt inte visar kameran. Till exempel rtsp://användare:lösenord@192.168.1.20:554/stream1. Adressen tas bort ur exporten utan hemligheter.': 'Only needed if Overview does not show the camera. For example rtsp://user:password@192.168.1.20:554/stream1. The address is removed from the export without secrets.',
+  'Skicka': 'Send', 'Direkt': 'Immediately', 'Bara när den anropas (webhook)': 'Only when called (webhook)',
+  'Skicka ändå efter (min, 0 = aldrig)': 'Send anyway after (min, 0 = never)',
+  'Händelsens nummer (för notifieringar som skickas när de anropas)': 'Event number (for notifications that are sent when called)',
+  'Den här notifieringen skickas inte när något händer. Låt en annan notifiering (t.ex. en webhook med {ph}) tala om händelsen för ditt system. När det systemet vill att den här ska skickas anropar det adressen nedan med händelsens nummer.': 'This notification is not sent when something happens. Let another notification (e.g. a webhook with {ph}) tell your system about the event. When that system wants this one to be sent, it calls the address below with the event number.',
+  'Spara först, så visas adressen.': 'Save first and the address is shown.',
+  'Utan event skickas den senaste händelsen som väntar. Med &text=… ersätts texten. Med en reservtid skickas den ändå om ingen har anropat.': 'Without event the latest waiting event is sent. With &text=… the text is replaced. With a fallback time it is sent anyway if nobody has called.',
+  'Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.': 'No filters: this notification receives every alarm from every camera in every mode.',
+  'väntar på anrop': 'waiting for a call', 'skickad på begäran': 'sent on request',
   'Händelser': 'Events', 'Kameror': 'Cameras', 'Notifiering': 'Notifications', 'Inställningar': 'Settings', 'Status': 'Status', 'Guide': 'Guide', 'Övrigt': 'Other',
   'Du har ändringar som inte är sparade. Lämna ändå?': 'You have unsaved changes. Leave anyway?',
   'Kalibrerar – larm fördröjs {s} s': 'Calibrating – alarms delayed {s} s',
@@ -104,7 +114,10 @@ const EN = {
   'AI': 'AI', 'Modell': 'Model', 'Beräkning': 'Compute', 'Automatiskt (grafikkrets om den finns)': 'Automatic (GPU if available)', 'Grafikkrets': 'GPU', 'Processor': 'CPU',
   'inbyggd': 'built-in', 'egen': 'own', 'Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.': 'Own models (e.g. YOLO26) are added with the converter, see the README.',
   'Standardvärden för kameror': 'Camera defaults', 'Säkerhet minst (%)': 'Minimum confidence (%)', 'Tid mellan bilder (ms)': 'Time between snapshots (ms)',
-  'Lagring': 'Storage', 'Spara bilder i (dagar)': 'Keep images for (days)', '0 = spara för alltid': '0 = keep forever', 'Spara även analyser utan larm': 'Also save analyses without alarm',
+  'Lagring': 'Storage', 'Spara bilder i (dagar)': 'Keep images for (days)', '0 = spara för alltid': '0 = keep forever',
+  'Högst (MB)': 'At most (MB)', '0 = ingen gräns. Det som inträffar först gäller – de äldsta händelserna tas bort.': '0 = no limit. Whichever comes first applies – the oldest events are removed.',
+  'Använt: {mb} MB ({img} MB bilder i {n} händelser, databas {db} MB)': 'Used: {mb} MB ({img} MB images in {n} events, database {db} MB)',
+  ', äldsta {d}': ', oldest {d}', 'av {max} MB': 'of {max} MB', 'Lagring:': 'Storage:', 'Spara även analyser utan larm': 'Also save analyses without alarm',
   'SynoArgus adress (för länkar i larm)': 'SynoArgus address (for links in alarms)', 'Rensa alla händelser': 'Delete all events',
   'Radera alla händelser och bilder? Det går inte att ångra.': 'Delete all events and images? This cannot be undone.', '{n} händelser raderades': '{n} events deleted',
   'Styr kameror (webhook)': 'Control cameras (webhook)', 'Slå på eller av analysen per kamera, t.ex. från Homey. Surveillance Station påverkas inte.': 'Turn analysis on or off per camera, e.g. from Homey. Surveillance Station is not affected.',
@@ -184,7 +197,7 @@ const fmtClock = ts => new Date(ts * 1000).toLocaleTimeString(S.lang === 'en' ? 
 const num = v => (v === '' || v === null || v === undefined) ? null : Number(v);
 
 async function api(path, opts = {}) {
-  const o = { credentials: 'same-origin', headers: {}, ...opts };
+  const o = { credentials: 'same-origin', ...opts, headers: { 'X-Lang': S.lang, ...(opts.headers || {}) } };
   if (o.body && typeof o.body !== 'string') { o.body = JSON.stringify(o.body); o.headers['Content-Type'] = 'application/json'; }
   const r = await fetch(path, o);
   let j = null;
@@ -241,6 +254,7 @@ function placeholders() {
     [en ? '%image%' : '%bild%', t('Länk till bilden i SynoArgus'), 'http://…/captures/…jpg'],
     [en ? '%event%' : '%händelse%', t('Bevakning: händelsens text'), en ? 'Leaving the zone, towards the camera' : 'Lämnar zonen, mot kameran'],
     [en ? '%event_id%' : '%händelse_id%', t('Bevakning: händelsens id'), 'leave_toward'],
+    [en ? '%event_no%' : '%händelse_nr%', t('Händelsens nummer (för notifieringar som skickas när de anropas)'), '1234'],
   ];
 }
 
@@ -254,7 +268,11 @@ function phHelp(where, example) {
 /* ---------------------------------------------------------------- start */
 async function boot() {
   try { S.state = await api('/api/state'); } catch (e) { main.innerHTML = `<p class="err center">${esc(t('Kan inte nå SynoArgus: {e}', { e: e.message }))}</p>`; return; }
-  S.lang = S.state.language || 'sv';
+  // Gränssnittets språk: valet i den här webbläsaren, annars inställningen, annars webbläsarens språk.
+  let chosen = null;
+  try { chosen = localStorage.getItem('synoargus.lang'); } catch (e) { /* */ }
+  const browser = (navigator.languages || [navigator.language || '']).some(l => /^(sv|nb|nn|no|da)\b/i.test(l)) ? 'sv' : 'en';
+  S.lang = ['sv', 'en'].includes(chosen) ? chosen : (S.state.setup_done && S.state.language ? S.state.language : browser);
   document.documentElement.lang = S.lang;
   translateChrome();
   if (S.state.logged_in) { await loadConfig(); checkUpdateBadge(); }
@@ -325,7 +343,7 @@ function render() {
   $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab));
   $$('#subnav button').forEach(b => b.classList.toggle('active', b.dataset.sub === S.sub));
   if (S.tab === 'settings') return ({ cameras: renderCameras, notifiers: renderNotifiers, watch: renderWatch, modes: renderModes, other: renderSettings })[S.sub]();
-  ({ events: renderEvents, status: renderStatus, guide: renderGuide })[S.tab]();
+  ({ events: renderEvents, overview: renderOverview, status: renderStatus, guide: renderGuide })[S.tab]();
 }
 
 $$('#nav button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
@@ -342,8 +360,10 @@ function langSwitch() {
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-lang]');
   if (!b || b.dataset.lang === S.lang) return;
-  try { await api('/api/language', { method: 'POST', body: { language: b.dataset.lang } }); location.reload(); }
-  catch (err) { toast(err.message, true); }
+  try { localStorage.setItem('synoargus.lang', b.dataset.lang); } catch (err) { /* */ }
+  // före installationen följer även SynoArgus språk (larmtexter) med; efter inloggning ändras det under Inställningar
+  if (!S.state.setup_done) { try { await api('/api/language', { method: 'POST', body: { language: b.dataset.lang } }); } catch (err) { /* */ } }
+  location.reload();
 });
 
 /* ---------------------------------------------------------------- installation */
@@ -380,7 +400,7 @@ function renderSetup() {
     try {
       const r = await api('/api/setup', { method: 'POST', body: {
         synology: { url: f.get('url'), user: f.get('user'), password: f.get('password'), verify_tls: !!f.get('verify_tls') },
-        login_user: f.get('login_user'), login_password: f.get('login_password'), login_otp: f.get('login_otp'), timezone: tz } });
+        login_user: f.get('login_user'), login_password: f.get('login_password'), login_otp: f.get('login_otp'), timezone: tz, language: S.lang } });
       toast(t('Klart! {n} kameror hittades.', { n: r.cameras }));
       S.tab = 'settings'; S.sub = 'cameras';
       await boot();
@@ -451,7 +471,7 @@ async function renderEvents() {
         <div class="meta">
           <div class="row" style="justify-content:space-between"><strong>${esc(ev.camera)}</strong><span class="muted">${fmtTime(ev.ts)}</span></div>
           <div>${ev.alarm ? ev.types.map(x => `<span class="tag">${esc(tname(x))}</span>`).join(' ') : `<span class="muted">${t('Inget av intresse')}</span>`}</div>
-          <div class="muted small">${[ev.ms ? ev.ms + ' ms' : '', ev.notified?.length ? ev.notified.map(n => `<span class="${n.ok ? 'okc' : 'err'}" title="${esc(n.error || '')}">${esc(n.name)} ${n.ok ? '✓' : '✗'}</span>`).join(' ') : ''].filter(Boolean).join(' · ')}</div>
+          <div class="muted small">${[ev.ms ? ev.ms + ' ms' : '', ev.notified?.length ? ev.notified.map(n => n.pending ? `<span class="muted" title="${esc(t('väntar på anrop'))}">${esc(n.name)} ⏳</span>` : `<span class="${n.ok ? 'okc' : 'err'}" title="${esc(n.error || (n.requested ? t('skickad på begäran') : ''))}">${esc(n.name)} ${n.ok ? '✓' : '✗'}</span>`).join(' ') : ''].filter(Boolean).join(' · ')}</div>
         </div>
       </div>`).join(''));
     if (events.length) last = events[events.length - 1].id;
@@ -521,6 +541,8 @@ function renderCamEditor(cam) {
       <label class="f">${t('Minsta tid mellan analyser (s)')}<input type="number" id="cDelay" min="0" value="${cam.delay_s ?? ''}" placeholder="${d.delay_s}"></label>
       <label class="f">${t('Antal bilder vid rörelse')}<input type="number" id="cMax" min="1" max="10" value="${cam.max_snapshots ?? ''}" placeholder="${d.max_snapshots}"></label>
       <label class="f">${t('Vänta innan första bild (ms)')}<input type="number" id="cWait" min="0" step="100" value="${cam.wait_ms || 0}"></label>
+      <label class="f" style="grid-column:1/-1">${t('Videoström för Översikt (valfri)')}<input type="text" id="cStream" autocomplete="off" spellcheck="false" value="${esc(cam.stream_url || '')}" placeholder="${t('Tom = strömmen från Surveillance Station')}"></label>
+      <p class="hint-box">${t('Behövs bara om Översikt inte visar kameran. Till exempel rtsp://användare:lösenord@192.168.1.20:554/stream1. Adressen tas bort ur exporten utan hemligheter.')}</p>
     </div>
   </div>
   <div class="panel">
@@ -576,6 +598,7 @@ function renderCamEditor(cam) {
       min_width: num($('#cMinW').value), min_height: num($('#cMinH').value),
       cooldown_s: num($('#cCool').value), delay_s: num($('#cDelay').value),
       max_snapshots: num($('#cMax').value), wait_ms: num($('#cWait').value) || 0, zones: cam.zones, modes: cam.modes,
+      stream_url: $('#cStream').value.trim(),
     };
   };
 
@@ -837,6 +860,14 @@ async function setMode(id) {
   catch (e) { toast(e.message, true); }
 }
 
+function notifyHelp(n) {
+  const base = `${S.triggerBase}/api/notify?token=${encodeURIComponent(S.cfg.trigger_token)}&notifier=${encodeURIComponent(n.id || '…')}`;
+  return `<div class="hint-box" style="margin-top:10px">
+    <p style="margin:0 0 6px">${t('Den här notifieringen skickas inte när något händer. Låt en annan notifiering (t.ex. en webhook med {ph}) tala om händelsen för ditt system. När det systemet vill att den här ska skickas anropar det adressen nedan med händelsens nummer.', { ph: S.lang === 'en' ? '%event_no%' : '%händelse_nr%' })}</p>
+    ${n.id ? copyRow('nfy_' + n.id, base + '&event=' + (S.lang === 'en' ? '%event_no%' : '%händelse_nr%')) : `<p class="muted small">${t('Spara först, så visas adressen.')}</p>`}
+    <p class="small muted" style="margin:6px 0 0">${t('Utan event skickas den senaste händelsen som väntar. Med &text=… ersätts texten. Med en reservtid skickas den ändå om ingen har anropat.')}</p></div>`;
+}
+
 function notifierWarnings(n) {
   const cams = S.cfg.cameras || {};
   const targets = (n.cameras && n.cameras.length ? n.cameras : Object.keys(cams)).filter(c => cams[c]);
@@ -850,6 +881,8 @@ function notifierWarnings(n) {
     const miss = targets.filter(c => (cams[c].modes || []).length && !cams[c].modes.includes(m));
     if (targets.length && miss.length === targets.length) out.push(t('I läget {m} larmar ingen av kamerorna {c}.', { m: modeName(m), c: miss.join(', ') }));
   }
+  if (n.deliver !== 'request' && !(n.cameras || []).length && !(n.types || []).length && !(n.modes || []).length)
+    out.push(t('Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.'));
   return out.map(x => `<p class="warnbox">⚠ ${esc(x)}</p>`).join('');
 }
 
@@ -960,6 +993,13 @@ function drawNotifiers() {
       <div><div class="muted small">${t('Bara för typer (inga valda = alla)')}</div><div class="chips" data-list="types">${types.map(x => `<button class="chip ${n.types.includes(x) ? 'on' : ''}" data-v="${x}">${esc(tname(x))}</button>`).join('')}</div></div>
       <div><div class="muted small">${t('Bara i läge (inga valda = alla)')}</div><div class="chips" data-list="modes">${modeList().map(m => `<button class="chip ${(n.modes || []).includes(m.id) ? 'on' : ''}" data-v="${esc(m.id)}">${esc(m.name)}</button>`).join('')}</div></div>
     </div>
+    <div class="grid" style="margin-top:12px">
+      <label class="f">${t('Skicka')}<select data-k="deliver">
+        <option value="direct" ${n.deliver !== 'request' ? 'selected' : ''}>${t('Direkt')}</option>
+        <option value="request" ${n.deliver === 'request' ? 'selected' : ''}>${t('Bara när den anropas (webhook)')}</option></select></label>
+      ${n.deliver === 'request' ? `<label class="f">${t('Skicka ändå efter (min, 0 = aldrig)')}<input type="number" data-k="fallback_min" min="0" max="1440" value="${Number(n.fallback_min || 0)}"></label>` : ''}
+    </div>
+    ${n.deliver === 'request' ? notifyHelp(n) : ''}
     <div class="nwarn">${notifierWarnings(n)}
     </div>
     <div class="row" style="margin-top:12px"><button class="btn" data-act="test">${t('Skicka test')}</button><button class="btn danger" data-act="del">${t('Ta bort')}</button></div>
@@ -980,7 +1020,7 @@ function drawNotifiers() {
     p.addEventListener('change', e => {
       const k = e.target.dataset.k;
       if (k === 'priority') n.priority = Number(e.target.value);
-      if (k === 'auth' || k === 'method' || k === 'security') { n[k] = e.target.value; drawNotifiers(); }
+      if (k === 'auth' || k === 'method' || k === 'security' || k === 'deliver') { n[k] = e.target.value; drawNotifiers(); }
     });
     p.addEventListener('focusin', e => { if (e.target.matches('input[type=text][data-k]') && e.target.dataset.k !== 'name') p._last = e.target; });
     p.addEventListener('click', async e => {
@@ -1136,9 +1176,11 @@ function renderSettings() {
 
   <div class="panel"><h3>${t('Lagring')}</h3><div class="grid">
     <label class="f">${t('Spara bilder i (dagar)')}<input type="number" name="sto.days_to_keep" min="0" value="${c.storage.days_to_keep}"><span class="hint">${t('0 = spara för alltid')}</span></label>
+    <label class="f">${t('Högst (MB)')}<input type="number" name="sto.max_mb" min="0" step="100" value="${c.storage.max_mb ?? 2000}"><span class="hint">${t('0 = ingen gräns. Det som inträffar först gäller – de äldsta händelserna tas bort.')}</span></label>
     <label class="check"><input type="checkbox" name="sto.save_empty" ${c.storage.save_empty ? 'checked' : ''}> ${t('Spara även analyser utan larm')}</label>
     <label class="f">${t('SynoArgus adress (för länkar i larm)')}<input name="public_url" value="${esc(c.public_url)}" placeholder="http://192.168.1.10:8686"></label>
   </div>
+  <p class="small muted" id="stoUsage" style="margin:10px 0 0">…</p>
   <div class="row" style="margin-top:12px"><button type="button" class="btn danger" id="clearEvents">${t('Rensa alla händelser')}</button></div></div>
 
   <div class="panel"><h3>${t('Inloggning')}</h3><div class="grid">
@@ -1189,9 +1231,14 @@ function renderSettings() {
   };
   $('#ctlCam').onchange = ctlUrl; $('#ctlAct').onchange = ctlUrl; ctlUrl();
 
+  const showUsage = async () => {
+    try { const u = await api('/api/storage'); if ($('#stoUsage')) $('#stoUsage').textContent = usageText(u); }
+    catch (e) { if ($('#stoUsage')) $('#stoUsage').textContent = ''; }
+  };
+  showUsage();
   $('#clearEvents').onclick = async () => {
     if (!confirm(t('Radera alla händelser och bilder? Det går inte att ångra.'))) return;
-    try { const r = await api('/api/events', { method: 'DELETE' }); toast(t('{n} händelser raderades', { n: r.deleted })); }
+    try { const r = await api('/api/events', { method: 'DELETE' }); toast(t('{n} händelser raderades', { n: r.deleted })); showUsage(); }
     catch (e) { toast(e.message, true); }
   };
   $('#expBtn').onclick = () => { location.href = `/api/export?secrets=${$('#expSecrets').checked ? 1 : 0}`; };
@@ -1219,7 +1266,7 @@ function renderSettings() {
       synology: { url: val('syn.url').trim(), user: val('syn.user').trim(), password: val('syn.password'), quality: val('syn.quality'), verify_tls: chk('syn.verify_tls') },
       detector: { model: val('det.model'), device: val('det.device') },
       defaults: Object.fromEntries(['threshold', 'min_width', 'min_height', 'cooldown_s', 'delay_s', 'max_snapshots', 'snapshot_interval_ms'].map(k => [k, Number(val('def.' + k))])),
-      storage: { days_to_keep: Number(val('sto.days_to_keep')), save_empty: chk('sto.save_empty') },
+      storage: { days_to_keep: Number(val('sto.days_to_keep')), max_mb: Number(val('sto.max_mb') || 0), save_empty: chk('sto.save_empty') },
       public_url: val('public_url').trim(),
       auth: { dsm_login: chk('auth.dsm_login'), allowed_users: val('auth.allowed_users'),
         sso: { enabled: chk('sso.enabled'), issuer, client_id: val('sso.client_id').trim(), client_secret: val('sso.client_secret'), redirect_url: val('sso.redirect_url').trim() } },
@@ -1228,7 +1275,7 @@ function renderSettings() {
     try {
       await api('/api/settings', { method: 'PUT', body });
       snap = ser();
-      if (newLang !== S.lang) { S.dirty = null; location.reload(); return; }
+      if (newLang !== S.lang) { try { localStorage.setItem('synoargus.lang', newLang); } catch (e) { /* */ } S.dirty = null; location.reload(); return; }
       await loadConfig(); toast(t('Sparat'));
     } catch (err) { toast(err.message, true); }
     btn.disabled = false;
@@ -1328,8 +1375,16 @@ function drawPwa() {
   } else box.innerHTML = `<p class="small" style="margin:0">${t(ios ? 'På iPhone och iPad: tryck på Dela i Safari och välj Lägg till på hemskärmen.' : 'Öppna webbläsarens meny och välj Installera app eller Lägg till på startskärmen.')}</p>`;
 }
 
+function usageText(u) {
+  if (!u) return '';
+  let s = t('Använt: {mb} MB ({img} MB bilder i {n} händelser, databas {db} MB)', { mb: u.total_mb, img: u.images_mb, n: u.events, db: u.db_mb });
+  if (u.max_mb) s += ' ' + t('av {max} MB', { max: u.max_mb });
+  if (u.oldest) s += t(', äldsta {d}', { d: new Date(u.oldest * 1000).toLocaleDateString(S.lang === 'en' ? 'en-GB' : 'sv-SE') });
+  return s;
+}
+
 /* ---------------------------------------------------------------- guide */
-const GUIDE_SHOTS = { start: 'events', cam: 'camera', noti: 'notifications', modes: 'modes', watch: 'watch', other: 'status' };
+const GUIDE_SHOTS = { start: 'events', cam: 'camera', noti: 'notifications', overview: 'overview', modes: 'modes', watch: 'watch', other: 'status' };
 function renderGuide() {
   const g = (window.GUIDE || {})[S.lang] || (window.GUIDE || {}).sv;
   if (!g) { main.innerHTML = `<p class="muted">–</p>`; return; }
@@ -1381,7 +1436,8 @@ async function renderStatus() {
         ${d.warning ? `<p class="err small">${esc(d.warning)}</p>` : ''}
         ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
         <p class="muted small">${t('Tillgängliga modeller: {m}', { m: d.available.map(m => esc(m.name) + ' (' + (m.source === 'user' ? t('egen') : t('inbyggd')) + ')').join(', ') || t('inga') })}</p></div>
-      <div class="panel"><h3>${t('Senaste dygnet')}</h3><p>${t('{a} analyser sparade · {b} larm', { a: s.analyses_24h, b: s.alarms_24h })}</p></div>
+      <div class="panel"><h3>${t('Senaste dygnet')}</h3><p>${t('{a} analyser sparade · {b} larm', { a: s.analyses_24h, b: s.alarms_24h })}</p>
+        ${s.storage ? `<p class="small muted" style="margin:6px 0 0">${t('Lagring:')} ${esc(usageText(s.storage))}</p>` : ''}</div>
       <div class="panel"><h3>${t('Kameror')}</h3><table><tr><th>${t('Kamera')}</th><th>${t('Senast')}</th><th>${t('Senaste larm')}</th></tr>
         ${Object.entries(s.cameras).map(([n, c]) => `<tr><td>${esc(n)}${c.busy ? ` <span class="tag">${t('analyserar')}</span>` : ''}</td><td>${c.last ? fmtTime(c.last.ts) + ` (${c.last.ms} ms)` : '–'}</td><td>${c.last_alarm ? fmtTime(c.last_alarm) : '–'}</td></tr>`).join('')}</table></div>
       <div class="panel"><h3>${t('Logg')}</h3>${s.recent.length ? `<table>${s.recent.map(r => `<tr><td class="muted small">${fmtTime(r.ts)}</td><td>${esc(r.camera)}</td><td>${esc(r.text)}</td></tr>`).join('')}</table>` : `<p class="muted">${t('Inget har hänt sedan start.')}</p>`}</div>

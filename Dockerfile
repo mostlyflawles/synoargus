@@ -21,6 +21,10 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu-core tzdata ocl-icd-libopencl1 intel-opencl-icd \
  && rm -rf /var/lib/apt/lists/*
+# go2rtc (MIT, https://github.com/AlexxIT/go2rtc): live video for the Overview tab. Listens on 127.0.0.1 only.
+ARG GO2RTC_VERSION=1.9.9
+ADD https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_VERSION}/go2rtc_linux_amd64 /usr/local/bin/go2rtc
+RUN chmod 755 /usr/local/bin/go2rtc
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt

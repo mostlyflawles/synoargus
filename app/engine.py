@@ -1,5 +1,6 @@
 """Hanterar rörelselarm från Surveillance Station: bild -> AI -> filter -> larm."""
 import asyncio
+import contextvars
 import io
 import logging
 import time
@@ -34,6 +35,7 @@ class Engine:
         self.recent = []  # senaste meddelanden för statussidan
         self.modes = None  # ModeManager, sätts i main
         self.on_trigger = None  # anropas vid varje reaktion (kalibreringen)
+        self.dispatcher = None  # notifieringar direkt / på begäran (sätts i main)
         self.priority_until = 0  # "Jag går förbi nu": kalibreringen går före larm till denna tid
 
     def priority_active(self):
@@ -85,11 +87,11 @@ class Engine:
         st.triggers.append(entry)
         entry["result"] = self._check(cam, st)
         if self.on_trigger:
-            asyncio.create_task(self.on_trigger(name, cam))
+            asyncio.create_task(self.on_trigger(name, cam), context=contextvars.Context())
         if entry["result"] == "accepted":
             st.busy = True
             self._note(name, tr("Rörelse: analyserar"))
-            asyncio.create_task(self._process(cam, st, entry))
+            asyncio.create_task(self._process(cam, st, entry), context=contextvars.Context())
         else:
             if entry["result"] == "mode" and self.modes:
                 entry["mode"] = self.modes.name(self.modes.current())
@@ -193,9 +195,12 @@ class Engine:
         mode = self.modes.current() if self.modes else None
         targets = [n for n in self.cfg.get("notifiers") or []
                    if (only and n["id"] == only) or (not only and notifiers.applies(n, name, types, mode))]
-        results = await asyncio.gather(*(notifiers.send(n, event, jpeg) for n in targets))
-        out = [{"id": n["id"], "name": n.get("name") or n["type"], "ok": ok, "error": err}
-               for n, (ok, err) in zip(targets, results)]
-        if event_id:
-            storage.set_notified(event_id, out)
-        return out
+        if only or not self.dispatcher:
+            # test av en notifiering: skickas alltid direkt
+            results = await asyncio.gather(*(notifiers.send(n, event, jpeg) for n in targets))
+            out = [{"id": n["id"], "name": n.get("name") or n["type"], "ok": ok, "error": err}
+                   for n, (ok, err) in zip(targets, results)]
+            if event_id:
+                storage.set_notified(event_id, out)
+            return out
+        return await self.dispatcher.send(event, jpeg, targets)

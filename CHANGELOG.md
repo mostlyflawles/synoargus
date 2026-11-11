@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 (build 11) – 2026-11-11
+- Fixed: the tests failed on GitHub because a test helper used a package (Starlette) that is not installed there. The tests now need only NumPy and Pillow.
+- GitHub Actions: `actions/checkout@v5` and `actions/setup-python@v6` (Node 24), runners pinned to Ubuntu 24.04.
+- No changes to the app itself compared with 0.6.
+
 ## 0.6 (build 10) – 2026-11-11
 - **Watch** (experimental), new tab under Settings: keeps an eye on a zone in one camera and reports *arrival*, *activity stops*, *activity resumes*, *leaves the zone* (towards the camera / another direction), *someone enters the picture*, *lingers* and *running for a long time*. Based on SynoArgus' own motion analysis (works in the dark and at a distance); the AI is only asked whether a newcomer is a vehicle. Per event: time limit, text, quiet time, notifications, *stop the watch*. Test mode, automatic stop, webhook `/api/watch?action=start|stop|status[&occupied=1]`, placeholders `%event%` / `%event_id%`, events saved with an image. Tuned against real recordings (day, dusk, night).
 - **Install as an app (PWA)** under Settings > Other (requires https; guide for DSM reverse proxy + Let's Encrypt). Short message instead of a blank page when the NAS cannot be reached.

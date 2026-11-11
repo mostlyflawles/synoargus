@@ -1,4 +1,8 @@
-from starlette.requests import Request  # noqa
+"""Minimal stand-in for FastAPI (tests only): the tests call the endpoint functions directly."""
+
+
+class Request:
+    """Only used as a type annotation by the app; the tests pass their own request objects."""
 class HTTPException(Exception):
     def __init__(self, status_code, detail=None):
         super().__init__(detail); self.status_code = status_code; self.detail = detail

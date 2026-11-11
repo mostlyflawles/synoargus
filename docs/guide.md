@@ -3,8 +3,10 @@
 This guide covers everything after installation. Installing the container is described in the [README](../README.md).
 The same guide (shorter, in English and Swedish) is available in SynoArgus under **Guide**.
 
-The menu: **Events · Settings · Status · Guide**. Settings has four tabs: **Cameras · Notifications · Modes · Other**.
+The menu: **Events · Settings · Status · Guide**. Settings has five tabs: **Cameras · Notifications · Watch · Modes · Other**.
 If you leave a tab, camera or the page with unsaved changes, SynoArgus asks first.
+
+<img src="../app/static/guide/en-events.png" alt="The Events page" width="720">
 
 ## Contents
 
@@ -13,11 +15,14 @@ If you leave a tab, camera or the page with unsaved changes, SynoArgus asks firs
 3. [Notifications](#3-notifications)
 4. [Modes and Home Mode](#4-modes-and-home-mode)
 5. [Calibration](#5-calibration)
-6. [Control cameras via webhook](#6-control-cameras-via-webhook)
-7. [Login with Synology SSO](#7-login-with-synology-sso-optional)
-8. [Own models (YOLO26 etc.)](#8-own-models-yolo26-etc)
-9. [Backup and restore](#9-backup-and-restore)
-10. [Troubleshooting](#troubleshooting)
+6. [Watch (experimental)](#6-watch-experimental)
+7. [Control cameras via webhook](#7-control-cameras-via-webhook)
+8. [Install as an app (PWA) and https](#8-install-as-an-app-pwa-and-https)
+9. [Login with Synology SSO](#9-login-with-synology-sso-optional)
+10. [Own models (YOLO26 etc.)](#10-own-models-yolo26-etc)
+11. [Backup and restore](#11-backup-and-restore)
+12. [Security notes](#12-security-notes)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -58,8 +63,11 @@ turns this on for existing rules.
 
 For each camera under **Settings > Cameras**:
 
-- **What should trigger an alarm?** – object types (the built-in models know the 80 COCO classes).
-- **Minimum confidence** – how sure the AI must be.
+<img src="../app/static/guide/en-camera.png" alt="Camera settings" width="720">
+
+- **What should be registered as an event?** – object types (the built-in models know the 80 COCO classes).
+- **Active in mode** – in which [modes](#4-modes-and-home-mode) the camera alarms (none selected = all).
+- **Minimum confidence (%)** – how sure the AI must be (10–95). Empty = the default under Settings > Other.
 - **Minimum width/height** – ignore tiny detections far away.
 - **Quiet after alarm** – no new alarms for X seconds after one was sent.
 - **Minimum time between analyses** – limits load if Surveillance Station triggers constantly.
@@ -91,6 +99,8 @@ profile. All other motion settings (detection area etc.) are sent back unchanged
 
 Under **Settings > Notifications** you can add as many as you like and limit each one to certain cameras, object types and modes.
 Save, then press **Send test**.
+
+<img src="../app/static/guide/en-notifications.png" alt="Notifications" width="720">
 
 | Type | What you need |
 |---|---|
@@ -142,6 +152,8 @@ Set the address used in links under Settings > Other > Storage.
 
 ## 4. Modes and Home Mode
 
+
+<img src="../app/static/guide/en-modes.png" alt="Modes and schedule" width="720">
 SynoArgus has a current **mode** – by default *Home*, *Night* and *Away*. Rename them and add your own under
 **Settings > Modes**.
 
@@ -207,7 +219,87 @@ and proposes sensitivity and threshold for Surveillance Station.
 > change that counts (`4 + (99 − S) × 60/98` of 255) and threshold to the share of the detection area (`T %`).
 > Check the result with the motion meter and run another calibration if needed.
 
-## 6. Control cameras via webhook
+## 6. Watch (experimental)
+
+Under **Settings > Watch** SynoArgus can keep an eye on a **zone** in one camera – a swing, a patio, a gate – and tell
+you when something deviates from how it was. It is based on **motion** (SynoArgus' own image comparison), not on the
+AI model, so it also works in the dark and when whoever is watched is only a few dozen pixels tall.
+
+<img src="../app/static/guide/en-watch.png" alt="Watch" width="720">
+
+1. Choose a camera, press **Get image** and drag a box around what should be watched (with a little margin).
+   The camera's exclusion zones are honoured too (put them over trees and roads).
+2. Choose which events should give a notification and press **Save**.
+3. Turn on **Test mode** the first time: events are only logged on the page, nothing is sent.
+4. Start it with the button or the webhook (e.g. from Homey when someone goes out):
+
+```
+GET http://<NAS-IP>:8686/api/watch?token=<token>&camera=<camera>&action=start
+GET http://<NAS-IP>:8686/api/watch?token=<token>&camera=<camera>&action=start&occupied=1   # the zone is already in use
+GET http://<NAS-IP>:8686/api/watch?token=<token>&action=stop
+GET http://<NAS-IP>:8686/api/watch?token=<token>&action=status
+```
+
+`camera` can be left out when only one watch is configured. The page builds the URLs for you.
+
+### Events
+
+<img src="../app/static/guide/en-watch-events.png" alt="Watch events" width="720">
+
+| Event (`%event_id%`) | When | Settings |
+|---|---|---|
+| Arrival at the zone (`arrive`) | Someone moves up to the zone and stays, or the zone becomes active | – |
+| Activity stops (`quiet`) | The zone has been quiet for X s although nobody left it | after X s |
+| Activity resumes (`resume`) | Motion in the zone again after *Activity stops* | – |
+| Leaves the zone, towards the camera (`leave_toward`) | A track goes from the zone and comes closer (down in the picture / grows) | – |
+| Leaves the zone, in another direction (`leave_other`) | A track goes from the zone some other way | – |
+| Someone enters the picture (`enter`) | Motion that did not start at the zone, moving purposefully for X s | after X s, *only when the zone is occupied*, *ignore vehicles* |
+| Lingers (`linger`) | Whoever entered stops at the zone or somewhere in the picture for X s and is still there, or stays in the picture for a long time | after X s, *in the picture longer than* |
+| The watch has been running for a long time (`timeout`) | A reminder after X minutes | after X min |
+
+Every event also has an **own text**, a **quiet time** (no repeat within X s), a choice of **notifications**
+(none selected = all notifications that apply to the camera) and **Stop the watch when this happens**.
+The watch can also stop by itself after a number of minutes. Each event is saved under Events with an image showing the
+zone (blue) and what moved (orange).
+
+In notifications, `%event%` is the event text and `%event_id%` the id in the table; `%what%` contains the text too.
+Webhook payloads (JSON) get `"watch_event": "<id>"`.
+
+*Ignore vehicles* asks the AI model what is moving (on a crop around the motion). *Only when the zone is occupied*
+keeps whoever walks to the zone from being reported as *Someone enters the picture*.
+
+### Example: a child on the swing
+
+| Setting | Value |
+|---|---|
+| Zone | around the swing set, with some margin |
+| Start | webhook from Homey when the child goes out |
+| Arrival at the zone | on |
+| Activity stops | 60 s |
+| Leaves the zone, towards the camera | on, **stops the watch** |
+| Leaves the zone, in another direction | on, to an urgent notification (e.g. ntfy priority 5) |
+| Someone enters the picture | 3 s, only when the zone is occupied, ignore vehicles |
+| Lingers | 12 s, urgent notification |
+| Activity resumes | off |
+| Stop automatically after | 90–120 min |
+
+These values were tuned against recordings: a child sitting still for half a minute on her own, a passer-by with dogs
+stopping for two seconds, and insects flashing in the infrared light for a fraction of a second.
+
+### Good to know
+
+- Someone standing or sitting completely still is not visible as motion; the arrival and the time are what is detected.
+- If the watch is started while the zone is already in use, use *Start – the zone is already occupied* (or `occupied=1`),
+  otherwise the first activity is reported as an arrival.
+- Low sun (moving shadows), rain, snow and headlights can give false *Someone enters the picture*. Use test mode and
+  exclusion zones, and raise the times if needed.
+- One watch at a time, and not together with a calibration. Normal alarms work as usual. After a restart of the
+  container the watch has to be started again.
+- The page shows images per second and milliseconds per image so you can see the load. On a desktop CPU the motion
+  analysis takes 15–30 ms per image; a Celeron J3455 is several times slower, which is still well within 3 images/s.
+- It is an aid, not a guarantee.
+
+## 7. Control cameras via webhook
 
 Turn the analysis for a camera on or off from Homey, Home Assistant, a script …
 (Surveillance Station itself is not affected):
@@ -223,7 +315,29 @@ GET http://<NAS-IP>:8686/api/control?token=<token>&camera=Hallway&action=on
 
 Settings > Other > *Control cameras (webhook)* builds the URL (with your token) for you.
 
-## 7. Login with Synology SSO (optional)
+## 8. Install as an app (PWA) and https
+
+Under **Settings > Other > Install as an app** SynoArgus can be added to the home screen or desktop and opens in its
+own window. Browsers only allow this on **https**. On iPhone/iPad: Share > *Add to Home Screen*.
+The app always needs the NAS – without a connection it shows a short message instead of a blank page.
+
+Setting up https with DSM:
+
+1. **Certificate:** Control Panel > External Access > DDNS – create a name (e.g. `yourname.synology.me`) and let DSM
+   get a Let's Encrypt certificate.
+2. **Reverse proxy:** Control Panel > Login Portal > Advanced > Reverse Proxy > Create.
+   Source: HTTPS, your hostname, a port (e.g. 8687). Destination: HTTP, `localhost`, port 8686.
+3. **Assign the certificate:** Control Panel > Security > Certificate > Settings – choose the certificate for the new service.
+4. Open `https://yourname.synology.me:8687`, log in and press *Install as an app*.
+
+If the address should only work at home, no port has to be opened to the internet, but the name must resolve to the
+NAS from inside (NAT loopback in the router or a local DNS entry). The Action Rules in Surveillance Station can keep
+using the plain http address.
+
+SynoArgus trusts `X-Forwarded-For` / `X-Forwarded-Proto` only from a proxy on the local network (such as DSM's own
+reverse proxy), so login throttling and the "setup only from the home network" check cannot be fooled from outside.
+
+## 9. Login with Synology SSO (optional)
 
 1. Install **SSO Server** from Package Center.
 2. SSO Server > **Service**: enable **OIDC** and set a server URL (e.g. `https://192.168.1.10:5001`).
@@ -237,7 +351,7 @@ Settings > Other > *Control cameras (webhook)* builds the URL (with your token) 
 If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS certificate* unchecked under Surveillance Station.
 **Allowed DSM accounts** apply to both password login and SSO.
 
-## 8. Own models (YOLO26 etc.)
+## 10. Own models (YOLO26 etc.)
 
 The built-in models are YOLOX tiny/s/m (Apache-2.0). You can add Ultralytics models such as **YOLO26** or **YOLO11**:
 
@@ -257,7 +371,7 @@ You can comment the block out afterwards to save space (and delete the converter
 
 > Ultralytics models are licensed **AGPL-3.0**. Using them is your choice; SynoArgus itself (MIT) does not include them.
 
-## 9. Backup and restore
+## 11. Backup and restore
 
 Settings > Other > *Backup*:
 
@@ -266,6 +380,19 @@ Settings > Other > *Backup*:
 - **Import** replaces all settings. Passwords missing from the file (export without secrets) keep their current values.
 
 Images and history are not part of the export; they live in `data/captures` and `data/history.db`.
+Every import is checked; invalid values are refused with the name of the field.
+
+## 12. Security notes
+
+- Passwords and keys are stored in plain text in `data/config.json`, readable by root only. SynoArgus keeps the
+  previous version as `config.json.bak` and uses it if the file cannot be read.
+- The container log contains no passwords, session ids or webhook addresses (from 0.6). Logs from earlier versions may
+  contain them – clear them, and do not paste old logs into an issue.
+- The trigger token is part of the webhook URLs. Treat it like a password; change it under Settings > Other if it leaks
+  (then use *Update the address* under each camera).
+- *Show raw data from Surveillance Station* masks passwords, keys and the addresses of other rules.
+- Login is throttled: 5 failed attempts per address or 10 per account within 5 minutes.
+- The first setup is only allowed from the local network.
 
 ---
 
@@ -296,6 +423,12 @@ Lower the minimum confidence or minimum size, try a larger model (yolox_m) or ch
 
 **Copy button does not work**
 Browsers only allow automatic copying on HTTPS pages; over HTTP SynoArgus selects the text so you can press Ctrl+C.
+
+**The watch gives too many events**
+Run it in test mode, raise the times, turn on *Only when the zone is occupied* and put exclusion zones over trees and roads.
+
+**Install as an app is greyed out**
+The page must be opened over https, see [Install as an app](#8-install-as-an-app-pwa-and-https).
 
 **Logs**
 Container Manager > Container > synoargus > Log.

@@ -10,7 +10,18 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "numpy>=1.26,<3" "pillow>=11,<13"
+      - run: python tests/run_all.py
+
   image:
+    needs: test        # a version whose tests fail never becomes an image
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

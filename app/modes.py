@@ -13,7 +13,8 @@ ett byte via webhook gäller direkt och avbryter väntan.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from datetime import time as dtime
 
 from .i18n import lang, tr
 from .synology import find_homemode
@@ -35,9 +36,12 @@ class ModeManager:
         self.cfg = cfg
         self.ss = ss
         self.note = note or (lambda camera, text: None)
-        self.homemode = None        # True/False/None (okänt)
+        m = cfg.get("mode") or {}
+        # senast kända Home Mode sparas, så att en omstart inte skriver över ett läge som satts för hand
+        self.homemode = m.get("hm_state") if (cfg.get("mode_auto", "homemode") or {}).get("enabled") else None
         self.homemode_error = None
-        self._fired = set()         # schemapunkter som redan körts (datum, index)
+        self._sched_seen = None     # tidpunkt för senaste schemakontroll
+        self._sched_saved = 0
 
     # ---------------------------------------------------------------- namn
     def modes(self):
@@ -141,6 +145,10 @@ class ModeManager:
             return
         if state != self.homemode:
             self.homemode = state
+
+            def remember(d):
+                d.setdefault("mode", {})["hm_state"] = state
+            self.cfg.update(remember)
             target = self.homemode_target()
             if not target:
                 return
@@ -151,25 +159,51 @@ class ModeManager:
             self.set(target, "homemode")
 
     def check_schedule(self, now=None):
+        """Kör schemapunkter som har passerats sedan förra kontrollen (även efter omstart, högst 24 h bakåt).
+        En punkt som är äldre än det senaste lägesbytet hoppas över – det senaste som ändrar läget gäller."""
         now = now or datetime.now()
-        hhmm = now.strftime("%H:%M")
-        today = now.strftime("%Y-%m-%d")
-        for i, e in enumerate(self.cfg.get("mode_auto", "schedule") or []):
-            key = (today, i, e.get("time"), e.get("mode"))
-            if e.get("time") == hhmm and now.weekday() in (e.get("days") or list(range(7))) and key not in self._fired:
-                self._fired.add(key)
-                if e.get("mode") in SPECIAL:
-                    self.release(e["mode"])
-                elif e.get("mode") in [m["id"] for m in self.modes()]:
-                    self.set(e["mode"], "schedule")
-        # glöm gamla dagar
-        self._fired = {k for k in self._fired if k[0] == today}
+        m = self.cfg.get("mode") or {}
+        last = self._sched_seen
+        if last is None:
+            last = m.get("sched_seen") or (now.timestamp() - 60)
+        last = min(max(last, now.timestamp() - 86400), now.timestamp())
+        last_dt = datetime.fromtimestamp(last)
+        due = []
+        for e in self.cfg.get("mode_auto", "schedule") or []:
+            try:
+                hh, mm = (int(x) for x in str(e.get("time")).split(":"))
+            except ValueError:
+                continue
+            for back in (0, 1):
+                occ = datetime.combine((now - timedelta(days=back)).date(), dtime(hh, mm))
+                if last_dt < occ <= now and occ.weekday() in (e.get("days") or list(range(7))):
+                    due.append((occ, e))
+        since = m.get("since") or 0
+        fired = False
+        for occ, e in sorted(due, key=lambda x: x[0]):
+            if occ.timestamp() <= since:
+                continue
+            fired = True
+            if e.get("mode") in SPECIAL:
+                self.release(e["mode"])
+            elif e.get("mode") in [x["id"] for x in self.modes()]:
+                self.set(e["mode"], "schedule")
+        self._sched_seen = now.timestamp()
+        if fired or now.timestamp() - self._sched_saved > 600:
+            self._sched_saved = now.timestamp()
+            seen = self._sched_seen
+
+            def remember(d):
+                d.setdefault("mode", {})["sched_seen"] = seen
+            self.cfg.update(remember)
 
     async def loop(self):
         while True:
-            try:
-                await self.poll_homemode()
-                self.check_schedule()
-            except Exception as e:
-                log.warning("Lägesautomatik: %s", e)
+            for step in (self.check_schedule, self.poll_homemode):   # schemat först: det får inte vänta på NAS:en
+                try:
+                    r = step()
+                    if asyncio.iscoroutine(r):
+                        await asyncio.wait_for(r, 30)
+                except Exception as e:
+                    log.warning("Lägesautomatik: %s", e or type(e).__name__)
             await asyncio.sleep(20)

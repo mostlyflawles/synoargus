@@ -55,6 +55,23 @@ def is_private(host):
         return False
 
 
+def real_ip(peer, forwarded):
+    """Klientens adress. X-Forwarded-For används bara när anropet kommer från en proxy på hemnätet
+    (t.ex. DSM:s omvända proxy), och då den adress som proxyn själv lade till (sist i listan)."""
+    if forwarded and is_private(peer):
+        last = forwarded.split(",")[-1].strip()
+        if last.startswith("[") and "]" in last:      # [ipv6]:port
+            last = last[1:last.index("]")]
+        elif last.count(":") == 1:                    # ipv4:port
+            last = last.split(":")[0]
+        try:
+            ipaddress.ip_address(last)
+            return last
+        except ValueError:
+            return ""      # obegriplig rubrik: lita inte på anropet
+    return peer or ""
+
+
 def user_allowed(cfg, user):
     allowed = [u.strip().lower() for u in cfg.get("auth", "allowed_users") or [] if u.strip()]
     return not allowed or (user or "").lower() in allowed
@@ -112,7 +129,7 @@ async def sso_finish(cfg, code, state, state_cookie):
                 claims = json.loads(_unb64(tok["id_token"].split(".")[1]))
             except Exception:
                 claims = {}
-            if claims.get("nonce") and claims["nonce"] != st["n"]:
+            if claims.get("nonce") != st["n"]:
                 raise ValueError("SSO-svaret hör inte till den här inloggningen")
         if conf.get("userinfo_endpoint") and tok.get("access_token"):
             try:

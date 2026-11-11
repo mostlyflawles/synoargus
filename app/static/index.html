@@ -7,12 +7,17 @@
 <meta name="color-scheme" content="light dark">
 <title>SynoArgus</title>
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="theme-color" content="#14324a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SynoArgus">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="top">
   <div class="brand"><img src="/static/icon.svg" alt="" width="28" height="28"><span>SynoArgus</span></div>
-  <div class="who" id="who" hidden><span class="priopill" id="prioPill" hidden></span><button class="modepill" id="modePill" hidden></button><span id="whoName"></span><button class="link" id="logoutBtn">Logga ut</button></div>
+  <div class="who" id="who" hidden><span class="priopill" id="prioPill" hidden></span><button class="watchpill" id="watchPill" hidden></button><button class="modepill" id="modePill" hidden></button><span id="whoName"></span><button class="link" id="logoutBtn">Logga ut</button></div>
   <nav id="nav" hidden>
     <button data-tab="events" data-label="Händelser" class="active">Händelser</button>
     <button data-tab="settings" data-label="Inställningar">Inställningar</button>
@@ -23,6 +28,7 @@
 <div class="subnav" id="subnav" hidden>
   <button data-sub="cameras" data-label="Kameror">Kameror</button>
   <button data-sub="notifiers" data-label="Notifiering">Notifiering</button>
+  <button data-sub="watch" data-label="Bevakning">Bevakning</button>
   <button data-sub="modes" data-label="Lägen">Lägen</button>
   <button data-sub="other" data-label="Övrigt">Övrigt</button>
 </div>
@@ -33,5 +39,6 @@
 <dialog id="viewer"><img id="viewerImg" alt=""><form method="dialog"><button id="viewerClose">Stäng</button></form></dialog>
 <script src="/static/guide.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/watch.js"></script>
 </body>
 </html>

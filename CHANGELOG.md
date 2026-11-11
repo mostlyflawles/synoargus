@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6 (build 10) – 2026-11-11
+- **Watch** (experimental), new tab under Settings: keeps an eye on a zone in one camera and reports *arrival*, *activity stops*, *activity resumes*, *leaves the zone* (towards the camera / another direction), *someone enters the picture*, *lingers* and *running for a long time*. Based on SynoArgus' own motion analysis (works in the dark and at a distance); the AI is only asked whether a newcomer is a vehicle. Per event: time limit, text, quiet time, notifications, *stop the watch*. Test mode, automatic stop, webhook `/api/watch?action=start|stop|status[&occupied=1]`, placeholders `%event%` / `%event_id%`, events saved with an image. Tuned against real recordings (day, dusk, night).
+- **Install as an app (PWA)** under Settings > Other (requires https; guide for DSM reverse proxy + Let's Encrypt). Short message instead of a blank page when the NAS cannot be reached.
+- Camera: *What should be registered as an event?*, *Active in mode*, *Minimum confidence* as a number field.
+- Screenshots (drawn demo camera) in the README, the configuration guide and the in-app guide.
+- Security (from a code review):
+  - No passwords, session ids, keys or webhook addresses in the container log (the HTTP client and access log no longer log URLs; logins are sent in the request body).
+  - `X-Forwarded-For` / `X-Forwarded-Proto` are only trusted from a proxy on the local network, so login throttling and the setup check cannot be bypassed from outside. Throttling also per account.
+  - A failed first setup stores nothing. The SSO login checks the nonce.
+  - All settings, cameras, notifications, watches and imports are validated; invalid values are refused with the field name.
+  - Raw data from Surveillance Station masks passwords, keys and other rules' addresses.
+  - `config.json.bak` is kept and used if `config.json` cannot be read.
+- Schedule: entries missed while the NAS was busy or the container restarted are caught up (up to 24 h); the last known Home Mode state survives a restart, so a manually set mode is not overwritten.
+- Tests are part of the repository (`tests/`) and run by GitHub Actions on every push and before every image build. OpenVINO is pinned to 2025.x.
+
 ## 0.5.1 (build 9) – 2026-11-09
 - **New menu:** Events · Settings · Status · Guide. Settings has four tabs: Cameras · Notifications · Modes · Other. The last used tab is remembered. *Notifiers* is now called *Notifications*.
 - **Guide** in the app (English and Swedish) and `docs/guide.md` on GitHub; the README now covers installation and points to the guide.

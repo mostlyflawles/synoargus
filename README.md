@@ -14,9 +14,21 @@ with the picture.
 - Per camera: object types, minimum confidence, minimum size, exclusion zones, quiet period, multiple snapshots
 - **Modes** (Home / Night / Away or your own): choose per camera and per notification when they are active; switch by hand, schedule (with return to Home Mode), webhook or Surveillance Station Home Mode
 - Notifications: **Pushbullet, Telegram, ntfy, email, webhook, MQTT** – with placeholders in texts and URLs
+- **Watch** (experimental): keeps an eye on a zone – arrival, activity stops, someone leaves, someone else enters or
+  lingers – based on motion, so it also works in the dark; start and stop it with a webhook
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,
   motion detection tuning, **calibration** (measures a day and proposes sensitivity/threshold), built-in guide, backup/restore, update check
+- Can be installed as an app (PWA) when opened over https
 - Login with your DSM account or Synology SSO (OpenID Connect)
+
+<p>
+<img src="app/static/guide/en-events.png" alt="Events" width="49%">
+<img src="app/static/guide/en-camera.png" alt="Camera settings" width="49%">
+<img src="app/static/guide/en-watch.png" alt="Watch" width="49%">
+<img src="app/static/guide/en-modes.png" alt="Modes" width="49%">
+</p>
+
+*Screenshots with a drawn demo camera.*
 
 > SynoArgus is an independent project and is not affiliated with, endorsed by or supported by Synology Inc.
 > "Synology" and "Surveillance Station" are trademarks of Synology Inc.
@@ -127,11 +139,14 @@ the same guide is built into SynoArgus under **Guide** (English and Swedish):
 3. [Notifications](docs/guide.md#3-notifications) – Pushbullet, Telegram, ntfy, email, webhook, MQTT, placeholders, Homey example
 4. [Modes and Home Mode](docs/guide.md#4-modes-and-home-mode) – manual, schedule, webhook, Home Mode
 5. [Calibration](docs/guide.md#5-calibration) – measure a day, get a proposal for sensitivity/threshold
-6. [Control cameras via webhook](docs/guide.md#6-control-cameras-via-webhook)
-7. [Login with Synology SSO](docs/guide.md#7-login-with-synology-sso-optional)
-8. [Own models (YOLO26 etc.)](docs/guide.md#8-own-models-yolo26-etc)
-9. [Backup and restore](docs/guide.md#9-backup-and-restore)
-10. [Troubleshooting](docs/guide.md#troubleshooting)
+6. [Watch (experimental)](docs/guide.md#6-watch-experimental) – events around a zone, with a webhook to start and stop
+7. [Control cameras via webhook](docs/guide.md#7-control-cameras-via-webhook)
+8. [Install as an app (PWA) and https](docs/guide.md#8-install-as-an-app-pwa-and-https)
+9. [Login with Synology SSO](docs/guide.md#9-login-with-synology-sso-optional)
+10. [Own models (YOLO26 etc.)](docs/guide.md#10-own-models-yolo26-etc)
+11. [Backup and restore](docs/guide.md#11-backup-and-restore)
+12. [Security notes](docs/guide.md#12-security-notes)
+13. [Troubleshooting](docs/guide.md#troubleshooting)
 
 **Locked out of SynoArgus?** Remove the `#` in front of `- SYNOARGUS_UNLOCK=1` in `docker-compose.yml` and build the
 project. All DSM accounts can now log in. Add your account under Settings > Other > Login, put the `#` back and build again.
@@ -168,12 +183,23 @@ DOCKER_BUILDKIT=0 docker build -t synoargus:local . > build.log 2>&1
 
 The converter image: `docker build -f converter/Dockerfile -t synoargus-converter:local .`
 
+### Tests
+
+The tests need only Python 3.11+ with NumPy and Pillow – no NAS, no network, no OpenVINO:
+
+```bash
+pip install "numpy>=1.26,<3" "pillow>=11,<13"
+python tests/run_all.py
+```
+
+GitHub Actions runs them on every push and before every image build (`.github/workflows/tests.yml` and `release.yml`).
+
 ## Publishing a release (maintainers)
 
 1. Update `APP_VERSION` in `app/version.py` and `CHANGELOG.md`, commit and push.
-2. Create and push a tag: `git tag v0.4 && git push origin v0.4`.
-3. GitHub Actions (`.github/workflows/release.yml`) builds `synoargus` and `synoargus-converter`, pushes them to
-   `ghcr.io/<owner>/…` with the tags `0.4` and `latest`, and creates a GitHub release.
+2. Create and push a tag: `git tag v0.6 && git push origin v0.6`.
+3. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds `synoargus` and `synoargus-converter`, pushes them to
+   `ghcr.io/<owner>/…` with the tags `0.6` and `latest`, and creates a GitHub release.
 4. **First time only:** on GitHub, open your profile > Packages > `synoargus` (and `synoargus-converter`) >
    Package settings > *Change visibility* > **Public**. Otherwise the NAS cannot pull the images without logging in.
 

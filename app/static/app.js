@@ -7,7 +7,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const main = $('#main');
 let S = { state: null, cfg: null, types: null, models: [], triggerBase: '', tab: 'events', sub: 'cameras', cam: null, lang: 'sv', update: null, dirty: null, prio: 0 };
-try { const v = localStorage.getItem('synoargus.sub'); if (['cameras', 'notifiers', 'modes', 'other'].includes(v)) S.sub = v; } catch (e) { /* */ }
+try { const v = localStorage.getItem('synoargus.sub'); if (['cameras', 'notifiers', 'watch', 'modes', 'other'].includes(v)) S.sub = v; } catch (e) { /* */ }
 const stoppers = new Set();  // livebild, rörelsemätare m.m. som ska stoppas när man byter vy
 function stopAll() { stoppers.forEach(f => { try { f(); } catch (e) { /* */ } }); stoppers.clear(); }
 
@@ -17,6 +17,12 @@ const EN = {
   'Du har ändringar som inte är sparade. Lämna ändå?': 'You have unsaved changes. Leave anyway?',
   'Kalibrerar – larm fördröjs {s} s': 'Calibrating – alarms delayed {s} s',
   'Logga ut': 'Log out', 'Laddar…': 'Loading…', 'Kan inte nå SynoArgus: {e}': 'Cannot reach SynoArgus: {e}',
+  'Bevakning: händelsens text': 'Watch: the text of the event', 'Bevakning: händelsens id': 'Watch: the id of the event',
+  'Installera som app': 'Install as an app', 'SynoArgus är installerad som app.': 'SynoArgus is installed as an app.',
+  'Lägg SynoArgus på hemskärmen eller skrivbordet, med egen ikon och eget fönster.': 'Put SynoArgus on the home screen or desktop, with its own icon and its own window.',
+  'Installation kräver en säker anslutning (https). Du använder http nu. Lägg SynoArgus bakom en omvänd proxy med certifikat i DSM – se Guide > Övrigt.': 'Installing requires a secure connection (https). You are using http now. Put SynoArgus behind a reverse proxy with a certificate in DSM – see Guide > Other.',
+  'På iPhone och iPad: tryck på Dela i Safari och välj Lägg till på hemskärmen.': 'On iPhone and iPad: tap Share in Safari and choose Add to Home Screen.',
+  'Öppna webbläsarens meny och välj Installera app eller Lägg till på startskärmen.': 'Open the browser menu and choose Install app or Add to Home screen.',
   'Kopierat': 'Copied', 'Adressen är markerad – tryck Ctrl+C': 'The address is selected – press Ctrl+C', 'Kopiera': 'Copy',
   'Sparat': 'Saved', 'Spara': 'Save', 'Ta bort': 'Remove', 'Aktiv': 'Active', 'Namn': 'Name', 'Lösenord': 'Password',
   'Användarnamn': 'Username', 'Användare': 'User', 'Port': 'Port', 'Metod': 'Method', 'Adress': 'Address', 'Token': 'Token',
@@ -42,7 +48,7 @@ const EN = {
   'Hämta från Surveillance Station': 'Fetch from Surveillance Station', 'Inga kameror. Hämta dem från Surveillance Station.': 'No cameras. Fetch them from Surveillance Station.',
   '{n} kameror lades till': '{n} cameras added', 'Inga nya kameror': 'No new cameras',
   'Adress till Action Rule i Surveillance Station (Webhook, metod GET):': 'Address for the Action Rule in Surveillance Station (Webhook, method GET):',
-  'Vad ska larma?': 'What should trigger an alarm?', 'Lägg till annan typ…': 'Add another type…',
+  'Vad ska registreras som händelse?': 'What should be registered as an event?', 'Säkerhet minst (%)': 'Minimum confidence (%)', 'Lägg till annan typ…': 'Add another type…',
   'Säkerhet minst': 'Minimum confidence', 'Standard {v} %': 'Default {v} %', 'Minsta bredd (px)': 'Minimum width (px)', 'Minsta höjd (px)': 'Minimum height (px)',
   'Tyst efter larm (s)': 'Quiet after alarm (s)', 'Minsta tid mellan analyser (s)': 'Minimum time between analyses (s)', 'Antal bilder vid rörelse': 'Snapshots per motion event',
   'Vänta innan första bild (ms)': 'Wait before first snapshot (ms)', 'Uteslutningszoner': 'Exclusion zones', 'Hämta bild': 'Get image',
@@ -124,7 +130,7 @@ const EN = {
   'snabbast, lägst träffsäkerhet': 'fastest, lowest accuracy', 'noggrannast, 2–3 ggr långsammare': 'most accurate, 2–3× slower', 'balanserad (rekommenderas)': 'balanced (recommended)',
   'mycket tung för en NAS': 'very heavy for a NAS', 'egen modell': 'own model',
   'Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Stoppa</b>, sedan <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen). Städa till sist under <b>Image</b> &gt; <b>Remove Unused Images</b>.': 'Update in Container Manager: <b>Project</b> &gt; synoargus &gt; <b>Action</b> &gt; <b>Stop</b>, then <b>Action</b> &gt; <b>Build</b> (pulls the new image). Finally clean up under <b>Image</b> &gt; <b>Remove Unused Images</b>.',
-  'Larmar i läge (inga valda = alla)': 'Alarms in mode (none selected = all)', 'Typer': 'Types', 'Bara i läge (inga valda = alla)': 'Only in mode (none selected = all)',
+  'Aktiv i läge (inga valda = alla)': 'Active in mode (none selected = all)', 'Typer': 'Types', 'Bara i läge (inga valda = alla)': 'Only in mode (none selected = all)',
   'läge {m} – inget larm': 'mode {m} – no alarm', 'Läge': 'Mode', 'Läge: {m}': 'Mode: {m}', 'Hemma': 'Home', 'Natt': 'Night', 'Borta': 'Away',
   'Filtret {t} matchar ingen av kamerorna {c} – de letar inte efter {t}. Den här notifieringen kommer aldrig att skicka något för dem.': 'The filter {t} matches none of the cameras {c} – they do not look for {t}. This notification will never send anything for them.',
   'Filtret {t} gäller inte {c} – de letar inte efter {t}.': 'The filter {t} does not apply to {c} – they do not look for {t}.',
@@ -224,15 +230,17 @@ document.addEventListener('click', e => {
 function placeholders() {
   const en = S.lang === 'en';
   return [
-    [en ? '%camera%' : '%kamera%', t('Kamerans namn'), 'OutDoor2-Backyard'],
+    [en ? '%camera%' : '%kamera%', t('Kamerans namn'), en ? 'Backyard' : 'Baksidan'],
     [en ? '%what%' : '%vad%', t('Vad som hittades'), en ? 'Person, Cat' : 'Person, Katt'],
     [en ? '%what_en%' : '%vad_en%', t('Vad som hittades (engelska)'), 'person, cat'],
     [en ? '%count%' : '%antal%', t('Antal träffar'), '3'],
-    [en ? '%message%' : '%meddelande%', t('Hela meddelandet'), en ? 'OutDoor2-Backyard: 2 people, Cat' : 'OutDoor2-Backyard: 2 personer, Katt'],
+    [en ? '%message%' : '%meddelande%', t('Hela meddelandet'), en ? 'Backyard: 2 people, Cat' : 'Baksidan: 2 personer, Katt'],
     [en ? '%confidence%' : '%säkerhet%', t('Högsta säkerhet i %'), '87'],
     [en ? '%time%' : '%tid%', t('Klockslag'), '22:58:14'],
     [en ? '%date%' : '%datum%', t('Datum'), '2026-11-08'],
     [en ? '%image%' : '%bild%', t('Länk till bilden i SynoArgus'), 'http://…/captures/…jpg'],
+    [en ? '%event%' : '%händelse%', t('Bevakning: händelsens text'), en ? 'Leaving the zone, towards the camera' : 'Lämnar zonen, mot kameran'],
+    [en ? '%event_id%' : '%händelse_id%', t('Bevakning: händelsens id'), 'leave_toward'],
   ];
 }
 
@@ -251,6 +259,7 @@ async function boot() {
   translateChrome();
   if (S.state.logged_in) { await loadConfig(); checkUpdateBadge(); }
   setPriority(S.state.priority?.until);
+  setWatchPill(S.state.watch);
   render();
 }
 
@@ -315,13 +324,14 @@ function render() {
   if (!st.logged_in) return renderLogin();
   $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab));
   $$('#subnav button').forEach(b => b.classList.toggle('active', b.dataset.sub === S.sub));
-  if (S.tab === 'settings') return ({ cameras: renderCameras, notifiers: renderNotifiers, modes: renderModes, other: renderSettings })[S.sub]();
+  if (S.tab === 'settings') return ({ cameras: renderCameras, notifiers: renderNotifiers, watch: renderWatch, modes: renderModes, other: renderSettings })[S.sub]();
   ({ events: renderEvents, status: renderStatus, guide: renderGuide })[S.tab]();
 }
 
 $$('#nav button').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 $$('#subnav button').forEach(b => b.addEventListener('click', () => go('settings', b.dataset.sub)));
 $('#modePill').addEventListener('click', () => go('status'));
+$('#watchPill').addEventListener('click', () => { S.wcam = S.state.watch || S.wcam; go('settings', 'watch'); });
 $('#logoutBtn').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); S.state.logged_in = false; render(); });
 
 function langSwitch() {
@@ -441,7 +451,7 @@ async function renderEvents() {
         <div class="meta">
           <div class="row" style="justify-content:space-between"><strong>${esc(ev.camera)}</strong><span class="muted">${fmtTime(ev.ts)}</span></div>
           <div>${ev.alarm ? ev.types.map(x => `<span class="tag">${esc(tname(x))}</span>`).join(' ') : `<span class="muted">${t('Inget av intresse')}</span>`}</div>
-          <div class="muted small">${ev.ms ?? '?'} ms${ev.notified?.length ? ' · ' + ev.notified.map(n => `<span class="${n.ok ? 'okc' : 'err'}" title="${esc(n.error || '')}">${esc(n.name)} ${n.ok ? '✓' : '✗'}</span>`).join(' ') : ''}</div>
+          <div class="muted small">${[ev.ms ? ev.ms + ' ms' : '', ev.notified?.length ? ev.notified.map(n => `<span class="${n.ok ? 'okc' : 'err'}" title="${esc(n.error || '')}">${esc(n.name)} ${n.ok ? '✓' : '✗'}</span>`).join(' ') : ''].filter(Boolean).join(' · ')}</div>
         </div>
       </div>`).join(''));
     if (events.length) last = events[events.length - 1].id;
@@ -496,15 +506,15 @@ function renderCamEditor(cam) {
     <div id="arBox" class="arbox small muted">${t('Kontrollerar regler i Surveillance Station…')}</div>
   </div>
   <div class="panel">
-    <h3>${t('Vad ska larma?')}</h3>
-    <div class="muted small" style="margin-bottom:4px">${t('Larmar i läge (inga valda = alla)')}</div>
+    <h3>${t('Vad ska registreras som händelse?')}</h3>
+    <div class="muted small" style="margin-bottom:4px">${t('Aktiv i läge (inga valda = alla)')}</div>
     <div class="chips" id="cModes" style="margin-bottom:12px">${modeList().map(m => `<button class="chip ${(cam.modes || []).includes(m.id) ? 'on' : ''}" data-m="${esc(m.id)}">${esc(m.name)}</button>`).join('')}</div>
     <div class="muted small" style="margin-bottom:4px">${t('Typer')}</div>
     <div class="chips" id="cTypes">${common.map(x => `<button class="chip ${cam.types.includes(x) ? 'on' : ''}" data-t="${x}">${esc(tname(x))}</button>`).join('')}</div>
     <div class="row" style="margin-top:8px"><select id="cOther" style="width:auto"><option value="">${t('Lägg till annan typ…')}</option>${others.map(x => `<option value="${x}">${esc(tname(x))}</option>`).join('')}</select>
       <span id="cOtherList"></span></div>
     <div class="grid" style="margin-top:14px">
-      <label class="f">${t('Säkerhet minst')} <b id="thrV">${cam.threshold ?? d.threshold} %</b><input type="range" id="cThr" min="10" max="95" value="${cam.threshold ?? d.threshold}"><span class="hint">${t('Standard {v} %', { v: d.threshold })}</span></label>
+      <label class="f">${t('Säkerhet minst (%)')}<input type="number" id="cThr" min="10" max="95" value="${cam.threshold ?? ''}" placeholder="${d.threshold}"></label>
       <label class="f">${t('Minsta bredd (px)')}<input type="number" id="cMinW" min="0" value="${cam.min_width ?? ''}" placeholder="${d.min_width}"></label>
       <label class="f">${t('Minsta höjd (px)')}<input type="number" id="cMinH" min="0" value="${cam.min_height ?? ''}" placeholder="${d.min_height}"></label>
       <label class="f">${t('Tyst efter larm (s)')}<input type="number" id="cCool" min="0" value="${cam.cooldown_s ?? ''}" placeholder="${d.cooldown_s}"></label>
@@ -556,15 +566,13 @@ function renderCamEditor(cam) {
   $('#cTypes').onclick = e => { const x = e.target.dataset.t; if (!x) return; toggleType(x); e.target.classList.toggle('on'); };
   $('#cOther').onchange = e => { const x = e.target.value; if (x && !cam.types.includes(x)) { cam.types.push(x); drawOther(); } e.target.value = ''; };
   $('#cOtherList').onclick = e => { const x = e.target.dataset.t; if (x) { toggleType(x); drawOther(); } };
-  $('#cThr').oninput = e => { $('#thrV').textContent = e.target.value + ' %'; };
 
   cam.modes = cam.modes || [];
   $('#cModes').onclick = e => { const m = e.target.dataset.m; if (!m) return; cam.modes = cam.modes.includes(m) ? cam.modes.filter(x => x !== m) : [...cam.modes, m]; e.target.classList.toggle('on'); };
   const collect = () => {
-    const thr = Number($('#cThr').value);
     return {
       enabled: $('#cEnabled').checked, types: cam.types,
-      threshold: thr === d.threshold && cam.threshold == null ? null : thr,
+      threshold: num($('#cThr').value),
       min_width: num($('#cMinW').value), min_height: num($('#cMinH').value),
       cooldown_s: num($('#cCool').value), delay_s: num($('#cDelay').value),
       max_snapshots: num($('#cMax').value), wait_ms: num($('#cWait').value) || 0, zones: cam.zones, modes: cam.modes,
@@ -1158,6 +1166,11 @@ function renderSettings() {
     <div style="margin-top:10px" id="ctlUrlBox"></div>
   </div>
 
+  <div class="panel"><h3>${t('Installera som app')}</h3>
+    <p class="muted small" style="margin-top:0">${t('Lägg SynoArgus på hemskärmen eller skrivbordet, med egen ikon och eget fönster.')}</p>
+    <div id="pwaBox"></div>
+  </div>
+
   <div class="panel"><h3>${t('Säkerhetskopia')}</h3>
     <label class="check"><input type="checkbox" id="expSecrets" checked> ${t('Ta med lösenord och nycklar')}</label>
     <p class="hint-box" style="margin:6px 0 10px">${t('Filen innehåller då lösenord i klartext. Förvara den säkert.')}</p>
@@ -1165,6 +1178,7 @@ function renderSettings() {
       <label class="btn" style="display:inline-block">⬆ ${t('Importera')}<input type="file" id="impFile" accept="application/json,.json" hidden></label></div>
   </div>`;
 
+  drawPwa();
   const form = $('#setForm');
   const ser = () => [...form.elements].map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001');
   let snap = ser();
@@ -1296,7 +1310,26 @@ function drawModesPanel() {
   });
 }
 
+/* ---------------------------------------------------------------- installera som app (PWA) */
+let pwaPrompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pwaPrompt = e; drawPwa(); });
+window.addEventListener('appinstalled', () => { pwaPrompt = null; drawPwa(); });
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => { /* appen fungerar ändå */ });
+function drawPwa() {
+  const box = $('#pwaBox'); if (!box) return;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (standalone) box.innerHTML = `<span class="tag ok">✓ ${t('SynoArgus är installerad som app.')}</span>`;
+  else if (!window.isSecureContext) box.innerHTML = `<button type="button" class="btn" disabled>${t('Installera som app')}</button>
+    <p class="warnbox">${t('Installation kräver en säker anslutning (https). Du använder http nu. Lägg SynoArgus bakom en omvänd proxy med certifikat i DSM – se Guide > Övrigt.')}</p>`;
+  else if (pwaPrompt) {
+    box.innerHTML = `<button type="button" class="btn primary" id="pwaBtn">⬇ ${t('Installera som app')}</button>`;
+    $('#pwaBtn').onclick = async () => { const p = pwaPrompt; pwaPrompt = null; try { p.prompt(); await p.userChoice; } catch (e) { /* */ } drawPwa(); };
+  } else box.innerHTML = `<p class="small" style="margin:0">${t(ios ? 'På iPhone och iPad: tryck på Dela i Safari och välj Lägg till på hemskärmen.' : 'Öppna webbläsarens meny och välj Installera app eller Lägg till på startskärmen.')}</p>`;
+}
+
 /* ---------------------------------------------------------------- guide */
+const GUIDE_SHOTS = { start: 'events', cam: 'camera', noti: 'notifications', modes: 'modes', watch: 'watch', other: 'status' };
 function renderGuide() {
   const g = (window.GUIDE || {})[S.lang] || (window.GUIDE || {}).sv;
   if (!g) { main.innerHTML = `<p class="muted">–</p>`; return; }
@@ -1304,8 +1337,10 @@ function renderGuide() {
     <h2>${esc(g.title)}</h2>
     <p class="muted">${esc(g.intro)}</p>
     <div class="toc">${g.sections.map(([id, title]) => `<a class="chip" href="#g-${id}">${esc(title)}</a>`).join('')}</div>
-    ${g.sections.map(([id, title, html]) => `<div class="panel" id="g-${id}"><h3>${esc(title)}</h3>${html}</div>`).join('')}
+    ${g.sections.map(([id, title, html]) => `<div class="panel" id="g-${id}"><h3>${esc(title)}</h3>
+      ${GUIDE_SHOTS[id] ? `<img class="shot" loading="lazy" src="/static/guide/${S.lang === 'en' ? 'en' : 'sv'}-${GUIDE_SHOTS[id]}.png" alt="">` : ''}${html}</div>`).join('')}
   </div>`;
+  main.querySelectorAll('img.shot').forEach(im => { im.onclick = () => { $('#viewerImg').src = im.src; $('#viewer').showModal(); }; });
   main.querySelectorAll('a[href^="#g-"]').forEach(a => a.addEventListener('click', e => {
     const el = document.getElementById(a.getAttribute('href').slice(1));
     if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }

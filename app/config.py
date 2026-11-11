@@ -1,5 +1,6 @@
 """Inställningar: läses och sparas som /data/config.json."""
 import json
+import logging
 import os
 import secrets
 import threading
@@ -97,6 +98,7 @@ DEFAULTS = {
         "schedule": [],             # [{"time": "23:00", "days": [0..6], "mode": "night"}] (0 = måndag)
     },
     "cameras": {},              # namn -> kamerainställningar, se camera_defaults()
+    "watches": {},              # kameranamn -> bevakning, se watch.defaults()
     "notifiers": [],            # lista med notifierare
 }
 
@@ -122,7 +124,7 @@ def camera_defaults(name, ss_id=None):
 def _merge(base, extra):
     out = deepcopy(base)
     for k, v in (extra or {}).items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict) and k not in ("cameras",):
+        if isinstance(v, dict) and isinstance(out.get(k), dict) and k not in ("cameras", "watches"):
             out[k] = _merge(out[k], v)
         else:
             out[k] = v
@@ -140,9 +142,17 @@ class Config:
             os.makedirs(DATA_DIR, exist_ok=True)
             os.makedirs(CAPTURE_DIR, exist_ok=True)
             os.makedirs(USER_MODEL_DIR, exist_ok=True)
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH, encoding="utf-8") as f:
-                    self.data = _merge(DEFAULTS, json.load(f))
+            for path in (CONFIG_PATH, CONFIG_PATH + ".bak"):
+                if not os.path.exists(path):
+                    continue
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        self.data = _merge(DEFAULTS, json.load(f))
+                    if path != CONFIG_PATH:
+                        logging.getLogger("synoargus").warning("config.json gick inte att läsa – använder reservkopian")
+                    break
+                except (ValueError, OSError) as e:
+                    logging.getLogger("synoargus").error("Kunde inte läsa %s: %s", path, e)
             changed = False
             if not self.data.get("secret"):
                 self.data["secret"] = secrets.token_hex(32)
@@ -158,11 +168,13 @@ class Config:
             tmp = CONFIG_PATH + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, CONFIG_PATH)
             try:
-                os.chmod(CONFIG_PATH, 0o600)
+                os.chmod(tmp, 0o600)
+                if os.path.exists(CONFIG_PATH):
+                    os.replace(CONFIG_PATH, CONFIG_PATH + ".bak")   # föregående version som reserv
             except OSError:
                 pass
+            os.replace(tmp, CONFIG_PATH)
 
     def get(self, *path, default=None):
         with self._lock:

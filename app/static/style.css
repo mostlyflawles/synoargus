@@ -170,3 +170,14 @@ pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap:
 @media (max-width: 420px) { .who { gap: 6px; } .modepill { padding: 3px 8px; } }
 .who .link { white-space: nowrap; }
 @media (max-width: 360px) { .brand span { font-size: 15px; } header.top { gap: 8px 10px; } }
+/* bevakning */
+.watchpill { font: inherit; font-size: 12px; font-weight: 600; border: 0; cursor: pointer; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); border-radius: 99px; padding: 3px 10px; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.wev { padding: 10px 0; border-top: 1px solid var(--line); }
+.wev:first-child { border-top: 0; padding-top: 0; }
+.wev-body { margin: 8px 0 0 24px; }
+.wev-body .check { margin-top: 6px; }
+.wlog > div { padding: 3px 0; }
+.wlog .tag { margin-left: 4px; }
+@media (max-width: 600px) { .wev-body { margin-left: 0; } .watchpill { max-width: 90px; } }
+.guide img.shot { display: block; width: 100%; max-width: 560px; height: auto; margin: 4px 0 12px; border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in; }
+@media (max-width: 420px) { .watchpill .n { display: none; } .watchpill { padding: 3px 8px; } }

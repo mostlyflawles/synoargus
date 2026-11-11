@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS models
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONUNBUFFERED=1
-RUN pip install "openvino>=2025.3"
+RUN pip install "openvino>=2025.3,<2026"
 WORKDIR /build
 # Optional: put yolox_*.onnx in ./modeller to avoid downloading during the build.
 COPY modeller/ /build/modeller/
@@ -33,4 +33,5 @@ LABEL org.opencontainers.image.title="SynoArgus" \
 VOLUME ["/data"]
 EXPOSE 8686
 HEALTHCHECK --interval=60s --timeout=5s --start-period=60s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8686/api/state',timeout=4)" || exit 1
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8686", "--proxy-headers", "--forwarded-allow-ips", "*", "--no-server-header"]
+# No access log (the trigger token is part of the URL) and no blind trust in proxy headers (handled in the app).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8686", "--no-proxy-headers", "--no-access-log", "--no-server-header"]

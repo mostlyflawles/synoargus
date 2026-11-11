@@ -82,6 +82,28 @@ EN = {
     "Rörelse: i kö (kalibrering pågår)": "Motion: queued (calibration running)",
     "Home Mode {s} – väntar på schemat": "Home Mode {s} – waiting for the schedule",
     "på": "on", "av": "off",
+    "Ogiltigt värde: {field}": "Invalid value: {field}",
+    "Okänd åtgärd (start, stop eller status)": "Unknown action (start, stop or status)",
+    "Rita en zon och spara bevakningen först": "Draw a zone and save the watch first",
+    "En kalibrering pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.":
+        "A calibration is running on {cam}. Watch and calibration cannot run at the same time.",
+    "En bevakning pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.":
+        "A watch is running on {cam}. Watch and calibration cannot run at the same time.",
+    "En bevakning pågår redan på {cam}. Stoppa den först.": "A watch is already running on {cam}. Stop it first.",
+    "Bevakningen startade ({src})": "The watch started ({src})",
+    "Bevakningen stoppades ({src})": "The watch stopped ({src})",
+    "händelse": "event", "tidsgräns": "time limit", "fel": "error", "inställningarna saknas": "settings missing",
+    "Ankomst till zonen": "Arrival at the zone", "Stilla i zonen": "Quiet in the zone",
+    "Rörelse i zonen igen": "Motion in the zone again",
+    "Lämnar zonen, mot kameran": "Leaving the zone, towards the camera",
+    "Lämnar zonen, åt annat håll": "Leaving the zone, in another direction",
+    "Någon kommer in i bild": "Someone enters the picture", "Någon dröjer kvar": "Someone lingers",
+    "Bevakningen har pågått länge": "The watch has been running for a long time",
+    "Någon har stannat vid zonen": "Someone has stopped at the zone",
+    "Någon dröjer kvar i bild": "Someone lingers in the picture",
+    "Stilla i zonen i {s} s": "Quiet in the zone for {s} s",
+    "Bevakningen har pågått i {m} min": "The watch has been running for {m} min",
+    "Fordon i bild – ignoreras": "Vehicle in the picture – ignored",
 }
 
 

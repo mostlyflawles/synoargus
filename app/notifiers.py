@@ -29,8 +29,11 @@ def placeholder_values(event):
     lg = event.get("lang") or "sv"
     v = {
         "kamera": event["camera"],
-        "vad": ", ".join(type_name(t, lg) for t in event["types"]),
-        "vad_en": ", ".join(event["types"]),
+        # bevakningshändelser har inga typer: då är %vad% händelsens text
+        "vad": ", ".join(type_name(t, lg) for t in event["types"]) or event.get("watch_event", ""),
+        "vad_en": ", ".join(event["types"]) or event.get("watch_key", ""),
+        "händelse": event.get("watch_event", ""),
+        "händelse_id": event.get("watch_key", ""),
         "antal": str(len(valid)),
         "meddelande": event["message"],
         "säkerhet": str(round(max(d["confidence"] for d in valid))) if valid else "",
@@ -45,7 +48,8 @@ def placeholder_values(event):
 
 
 ALIASES = {"camera": "kamera", "what": "vad", "what_en": "vad_en", "count": "antal", "message": "meddelande",
-           "confidence": "säkerhet", "time": "tid", "date": "datum", "image": "bild"}
+           "confidence": "säkerhet", "time": "tid", "date": "datum", "image": "bild", "event": "händelse",
+           "event_id": "händelse_id"}
 
 
 def has_placeholders(text):
@@ -58,8 +62,7 @@ def render(template, event, url=False):
 
     def rep(m):
         key = m.group(1).lower()
-        if key == "sakerhet":
-            key = "säkerhet"
+        key = {"sakerhet": "säkerhet", "handelse": "händelse", "handelse_id": "händelse_id"}.get(key, key)
         if key not in vals:
             return m.group(0)
         return quote(vals[key], safe="") if url else vals[key]
@@ -110,6 +113,7 @@ def build_payload(event):
                        for d in event["detections"] if d.get("valid")],
         "image_url": event.get("image_url"),
         "event_id": event.get("event_id"),
+        "watch_event": event.get("watch_key"),      # bevakning: arrive, quiet, leave_toward ... annars null
     }
 
 

@@ -66,10 +66,10 @@ async def dsm_login_check(url, verify, user, password, otp=None):
             if otp:
                 params["otp_code"] = otp
             try:
-                r = await c.get(entry, params=params)
+                r = await c.post(entry, data=params)   # i kroppen, så att lösenordet inte hamnar i någon logg
                 j = r.json()
             except Exception as e:
-                raise SynologyError(0, tr("Kunde inte nå DSM på {url}: {e}", url=url, e=e))
+                raise SynologyError(0, tr("Kunde inte nå DSM på {url}: {e}", url=url, e=type(e).__name__))
             if j.get("success"):
                 try:
                     await c.get(entry, params={"api": "SYNO.API.Auth", "version": "6", "method": "logout",
@@ -114,7 +114,7 @@ class SurveillanceStation:
         url, user, password, _ = self._settings()
         if not url or not user:
             raise SynologyError(0, tr("Synology-anslutningen är inte inställd"))
-        r = await self._http().get(url + "/webapi/entry.cgi", params={
+        r = await self._http().post(url + "/webapi/entry.cgi", data={
             "api": "SYNO.API.Auth", "version": "6", "method": "login",
             "account": user, "passwd": password, "session": "SurveillanceStation", "format": "sid"})
         j = r.json()

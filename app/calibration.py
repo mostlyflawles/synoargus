@@ -240,6 +240,7 @@ class CalibrationManager:
         self._last_react_ai = {}
         self.slow = {}              # run_id -> True om analysen är långsam (glesare bildpar)
         self._walk_task = None
+        self.watch_active = lambda: None    # sätts i main: kameran som bevakas, annars None
         self.walk_info = None       # {"camera", "until", "frames", "analysed"} under "Jag går förbi nu"
 
     # ---- databas
@@ -292,6 +293,8 @@ class CalibrationManager:
         other = self.active()
         if other:
             raise BusyError(other)
+        if self.watch_active():
+            raise BusyError("watch:" + self.watch_active())
         s, t, lo, hi, _ = await self.md_view(camera)
         now = time.time()
         with _lock, _db() as con:

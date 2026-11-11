@@ -1,0 +1,1969 @@
+{
+  "actRule": [
+    {
+      "actSchedule": "576254111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": 0,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.20:8686/api/trigger/Backyard?token=exampletoken0000000000",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 154,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevId": 5,
+          "evtDevIds": "",
+          "evtDsId": 0,
+          "evtId": 20,
+          "evtItem": -1,
+          "evtSrc": 4,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 154
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 150,
+      "name": "SynoArgus - Backyard",
+      "ruleId": 154,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/homemode_off",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 155,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevId": 0,
+          "evtDevIds": "",
+          "evtDsId": 0,
+          "evtId": 21,
+          "evtItem": -1,
+          "evtSrc": 4,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 155
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 151,
+      "name": "Homey Home Mode off",
+      "ruleId": 155,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/7/enabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 156,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 7,
+          "evtDevIds": "7",
+          "evtDevName": "Hall",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 7
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 1,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 156
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 152,
+      "name": "Homey Enabled rule for Hall",
+      "ruleId": 156,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/7/disabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 157,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 7,
+          "evtDevIds": "7",
+          "evtDevName": "Hall",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 7
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 2,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 157
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 153,
+      "name": "Homey Disabled rule for Hall",
+      "ruleId": 157,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/7/motion",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 158,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 7,
+          "evtDevIds": "7",
+          "evtDevName": "Hall",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 7
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 5,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 1,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 158
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 154,
+      "name": "Homey Motion Detection for Hall",
+      "ruleId": 158,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/7/connection_lost",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 159,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 7,
+          "evtDevIds": "7",
+          "evtDevName": "Hall",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 7
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 3,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 159
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 155,
+      "name": "Homey Connection lost rule for Hall",
+      "ruleId": 159,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/7/connection_normal",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 160,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 7,
+          "evtDevIds": "7",
+          "evtDevName": "Hall",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 7
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 4,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 160
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 156,
+      "name": "Homey Connection normal rule for Hall",
+      "ruleId": 160,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/8/enabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 161,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 8,
+          "evtDevIds": "8",
+          "evtDevName": "Garage",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 8
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 1,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 161
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 157,
+      "name": "Homey Enabled rule for Garage",
+      "ruleId": 161,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/8/disabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 162,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 8,
+          "evtDevIds": "8",
+          "evtDevName": "Garage",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 8
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 2,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 162
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 158,
+      "name": "Homey Disabled rule for Garage",
+      "ruleId": 162,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/8/motion",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 163,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 8,
+          "evtDevIds": "8",
+          "evtDevName": "Garage",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 8
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 5,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 1,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 163
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 159,
+      "name": "Homey Motion Detection for Garage",
+      "ruleId": 163,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/8/connection_lost",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 164,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 8,
+          "evtDevIds": "8",
+          "evtDevName": "Garage",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 8
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 3,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 164
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 160,
+      "name": "Homey Connection lost rule for Garage",
+      "ruleId": 164,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/8/connection_normal",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 165,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 8,
+          "evtDevIds": "8",
+          "evtDevName": "Garage",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 8
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 4,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 165
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 161,
+      "name": "Homey Connection normal rule for Garage",
+      "ruleId": 165,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/1/enabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 166,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 1,
+          "evtDevIds": "1",
+          "evtDevName": "Front",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 1
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 1,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 166
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 162,
+      "name": "Homey Enabled rule for Front",
+      "ruleId": 166,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/1/disabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 167,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 1,
+          "evtDevIds": "1",
+          "evtDevName": "Front",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 1
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 2,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 167
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 163,
+      "name": "Homey Disabled rule for Front",
+      "ruleId": 167,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/1/motion",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 168,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 1,
+          "evtDevIds": "1",
+          "evtDevName": "Front",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 1
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 5,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 1,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 168
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 164,
+      "name": "Homey Motion Detection for Front",
+      "ruleId": 168,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/1/connection_lost",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 169,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 1,
+          "evtDevIds": "1",
+          "evtDevName": "Front",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 1
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 3,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 169
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 165,
+      "name": "Homey Connection lost rule for Front",
+      "ruleId": 169,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/1/connection_normal",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 170,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 1,
+          "evtDevIds": "1",
+          "evtDevName": "Front",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 1
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 4,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 170
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 166,
+      "name": "Homey Connection normal rule for Front",
+      "ruleId": 170,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/5/enabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 171,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 5,
+          "evtDevIds": "5",
+          "evtDevName": "Backyard",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 5
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 1,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 171
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 167,
+      "name": "Homey Enabled rule for Backyard",
+      "ruleId": 171,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/5/disabled",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 172,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 5,
+          "evtDevIds": "5",
+          "evtDevName": "Backyard",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 5
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 2,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 172
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 168,
+      "name": "Homey Disabled rule for Backyard",
+      "ruleId": 172,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/5/motion",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 173,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 5,
+          "evtDevIds": "5",
+          "evtDevName": "Backyard",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 5
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 5,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 1,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 173
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 169,
+      "name": "Homey Motion Detection for Backyard",
+      "ruleId": 173,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/5/connection_lost",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 174,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 5,
+          "evtDevIds": "5",
+          "evtDevName": "Backyard",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 5
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 3,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 174
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 170,
+      "name": "Homey Connection lost rule for Backyard",
+      "ruleId": 174,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    },
+    {
+      "actSchedule": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+      "actType": 0,
+      "actions": [
+        {
+          "actDevEnable": false,
+          "actDevId": -1,
+          "actDevIds": "0",
+          "actDevName": "",
+          "actDevices": {},
+          "actDsId": 0,
+          "actId": -1,
+          "actItem": {
+            "id": -1,
+            "name": ""
+          },
+          "actItemList": null,
+          "actRetItem": {
+            "id": -2,
+            "name": ""
+          },
+          "actRetPos": -2,
+          "actSrc": 1,
+          "actTimeDur": 10,
+          "actTimeUnit": 1,
+          "actTimes": 1,
+          "blCondition": false,
+          "bmkComment": "",
+          "bmkLock": false,
+          "bmkName": "",
+          "bmkShowOsd": false,
+          "conditionUnit": 0,
+          "conditionValue": "",
+          "enabled": true,
+          "extUrl": "http://192.0.2.50:80/api/app/com.synology.ss/station/EXAMPLE000000/camera/5/connection_normal",
+          "headers": "",
+          "hostAccessUrl": "",
+          "httpBody": "",
+          "httpContentType": 0,
+          "id": 175,
+          "iftttEvent": "",
+          "iftttKey": "",
+          "param1": "",
+          "param2": "",
+          "param3": "",
+          "password": "",
+          "status": {
+            "0": 1
+          },
+          "userName": "",
+          "webhookReqMethod": 0
+        }
+      ],
+      "activeInHomeMode": false,
+      "enabled": true,
+      "events": [
+        {
+          "evtAttribute": 0,
+          "evtDevEnable": true,
+          "evtDevId": 5,
+          "evtDevIds": "5",
+          "evtDevName": "Backyard",
+          "evtDevices": [
+            {
+              "devEnable": true,
+              "devId": 5
+            }
+          ],
+          "evtDsId": 0,
+          "evtId": 4,
+          "evtItem": -1,
+          "evtSrc": 0,
+          "evtStatus": 1,
+          "evtTrig": 0,
+          "evtWebhookMethod": 1,
+          "evtWebhookToken": "",
+          "id": 175
+        }
+      ],
+      "evtMinIntvl": 10,
+      "multiEvtSetting": 0,
+      "multiRuleId": 171,
+      "name": "Homey Connection normal rule for Backyard",
+      "ruleId": 175,
+      "ruleType": 0,
+      "status": {
+        "0": 1
+      },
+      "urlSplit": false
+    }
+  ],
+  "total": 22
+}

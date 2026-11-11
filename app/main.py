@@ -1,6 +1,7 @@
 """SynoArgus – AI-larm för Synology Surveillance Station."""
 import asyncio
 import base64
+import hmac
 import io
 import json
 import logging
@@ -16,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from . import auth, notifiers, storage
+from . import auth, notifiers, storage, validate
 from .config import (CAPTURE_DIR, COMMON_TYPES, DEFAULT_MODEL, GITHUB_REPO, MODEL_DIR, TYPE_NAMES_SV,
                      USER_MODEL_DIR, camera_defaults, config)
 from .detector import COCO as COCO_TYPES
@@ -27,11 +28,15 @@ from .i18n import tr
 from .modes import ModeManager, SPECIAL as SPECIAL_MODES
 from .calibration import BusyError, CalibrationManager
 from . import calibration as calibration_mod
+from . import watch as watch_mod
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
 from .version import APP_BUILD, APP_BUILD_DATE, APP_NAME, APP_VERSION
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx loggar annars varje anrop med hela adressen (sessions-id, bot-nycklar, webhook-adresser)
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 log = logging.getLogger("synoargus")
 
 HERE = os.path.dirname(__file__)
@@ -70,7 +75,32 @@ def apply_timezone(tz):
 # ------------------------------------------------------------------ hjälpare
 
 def client_ip(request):
-    return request.client.host if request.client else ""
+    peer = request.client.host if request.client else ""
+    return auth.real_ip(peer, request.headers.get("x-forwarded-for"))
+
+
+def _via_proxy(request):
+    """Anropet kommer från en omvänd proxy på hemnätet (t.ex. DSM) som har satt X-Forwarded-rubriker."""
+    peer = request.client.host if request.client else ""
+    return bool(request.headers.get("x-forwarded-for")) and auth.is_private(peer)
+
+
+def is_https(request):
+    if _via_proxy(request):
+        proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+        if proto in ("http", "https"):
+            return proto == "https"
+    return request.url.scheme == "https"
+
+
+def base_url(request):
+    """Adressen som webbläsaren använde (https bakom en omvänd proxy)."""
+    host = request.headers.get("host") or request.url.netloc
+    if _via_proxy(request):
+        host = (request.headers.get("x-forwarded-host") or host).split(",")[0].strip()
+    if not re.match(r"^[A-Za-z0-9.\-:\[\]]+$", host or ""):
+        host = request.url.netloc
+    return f"{'https' if is_https(request) else 'http'}://{host}"
 
 
 def current_user(request):
@@ -90,14 +120,33 @@ def require(request):
 def set_session(resp, request, user, method):
     resp.set_cookie(auth.SESSION_COOKIE, auth.make_session(config.get("secret"), user, method),
                     max_age=auth.SESSION_DAYS * 86400, httponly=True, samesite="lax",
-                    secure=request.url.scheme == "https")
+                    secure=is_https(request))
 
 
-def too_many(ip):
+def too_many(*keys):
+    """Spärr mot gissningar: 5 fel per adress eller 10 per konto på 5 minuter."""
     now = time.time()
-    lst = [t for t in _fails.get(ip, []) if now - t < 300]
-    _fails[ip] = lst
-    return len(lst) >= 5
+    for k in [k for k, v in _fails.items() if not v or now - v[-1] > 300]:
+        del _fails[k]
+    for k in keys:
+        lst = [t for t in _fails.get(k, []) if now - t < 300]
+        if lst:
+            _fails[k] = lst
+        if len(lst) >= (10 if k.startswith("user:") else 5):
+            return True
+    return False
+
+
+def failed(*keys):
+    for k in keys:
+        _fails.setdefault(k, []).append(time.time())
+    if len(_fails) > 5000:      # håll minnet begränsat vid en attack
+        for k in sorted(_fails, key=lambda k: _fails[k][-1])[:2500]:
+            del _fails[k]
+
+
+def invalid(e):
+    return err(400, "Ogiltigt värde: {field}", field=e.args[0] if e.args else "?")
 
 
 SECRET_PATHS = [("synology", "password"), ("auth", "sso", "client_secret")]
@@ -140,6 +189,12 @@ def unmask(new, old):
 def unmask_notifiers(new_list, old_list):
     old = {n.get("id"): n for n in old_list or []}
     return [unmask(n, old.get(n.get("id"), {})) for n in new_list or []]
+
+
+def safe_error(e):
+    """Felmeddelande utan adresser (de kan innehålla nycklar)."""
+    text = str(e) or type(e).__name__
+    return re.sub(r"https?://\S+", "<url>", text)[:500]
 
 
 def cam_or_404(name):
@@ -245,7 +300,7 @@ async def headers(request, call_next):
 def check_token(token):
     if not config.get("setup_done"):
         raise err(409, "Installationen är inte klar")
-    if token != config.get("trigger_token"):
+    if not hmac.compare_digest(str(token).encode(), str(config.get("trigger_token")).encode()):
         raise err(403, "Fel token")
 
 
@@ -307,6 +362,7 @@ async def state(request: Request):
         "logged_in": bool(ok), "user": user if ok else None,
         "mode": modes.info() if ok else None,
         "priority": _priority() if ok else None,
+        "watch": watch.running() if ok else None,
         "dsm_login": a.get("dsm_login", True), "unlocked": unlocked(),
         "sso": bool(a["sso"].get("enabled") and a["sso"].get("issuer") and a["sso"].get("client_id")),
     }
@@ -336,29 +392,38 @@ async def setup(request: Request, body: dict = Body(...)):
         raise err(400, "Adressen måste börja med http:// eller https://")
     s = {"url": url, "user": (syn.get("user") or "").strip(), "password": syn.get("password") or "",
          "verify_tls": bool(syn.get("verify_tls")), "quality": syn.get("quality") or "balanced"}
+    if too_many("ip:" + client_ip(request)):
+        raise err(429, "För många försök, vänta 5 minuter")
+    before = config.get("synology")
     config.update(lambda d: d["synology"].update(s))
     ss.reset()
     try:
-        cams = await ss.list_cameras()
-    except SynologyError as e:
-        raise err(400, "Kunde inte ansluta till Surveillance Station: {e}", e=e)
-    except Exception as e:
-        raise err(400, "Kunde inte nå NAS:en: {e}", e=e)
-    login_user = (body.get("login_user") or "").strip()
-    if login_user:
         try:
-            await dsm_login_check(url, s["verify_tls"], login_user, body.get("login_password") or "",
-                                  body.get("login_otp") or None)
+            cams = await ss.list_cameras()
         except SynologyError as e:
-            raise err(400, "Ditt DSM-konto: {e}", e=e)
-    else:
-        login_user = s["user"]
+            raise err(400, "Kunde inte ansluta till Surveillance Station: {e}", e=e)
+        except Exception as e:
+            raise err(400, "Kunde inte nå NAS:en: {e}", e=type(e).__name__)
+        login_user = (body.get("login_user") or "").strip()
+        if login_user:
+            try:
+                await dsm_login_check(url, s["verify_tls"], login_user, body.get("login_password") or "",
+                                      body.get("login_otp") or None)
+            except SynologyError as e:
+                raise err(400, "Ditt DSM-konto: {e}", e=e)
+        else:
+            login_user = s["user"]
+    except HTTPException:
+        failed("ip:" + client_ip(request))
+        config.update(lambda d: d.__setitem__("synology", before))   # spara inget förrän det fungerar
+        ss.reset()
+        raise
     tz = (body.get("timezone") or "").strip()
 
     def finish(d):
         d["setup_done"] = True
         d["auth"]["allowed_users"] = [login_user]
-        d["public_url"] = d.get("public_url") or str(request.base_url).rstrip("/")
+        d["public_url"] = d.get("public_url") or base_url(request)
         if tz:
             d["timezone"] = tz
         for c in cams:
@@ -377,14 +442,14 @@ async def setup(request: Request, body: dict = Body(...)):
 
 @app.post("/api/login")
 async def login(request: Request, body: dict = Body(...)):
-    ip = client_ip(request)
-    if too_many(ip):
+    user = str(body.get("user") or "").strip()
+    keys = ("ip:" + client_ip(request), "user:" + user.lower())
+    if too_many(*keys):
         raise err(429, "För många försök, vänta 5 minuter")
     if not config.get("auth", "dsm_login"):
         raise err(400, "Inloggning med DSM-konto är avstängd, använd SSO")
-    user = (body.get("user") or "").strip()
     if not auth.user_allowed(config, user):
-        _fails.setdefault(ip, []).append(time.time())
+        failed(*keys)
         raise err(403, "Kontot har inte behörighet till SynoArgus")
     syn = config.get("synology")
     try:
@@ -392,7 +457,7 @@ async def login(request: Request, body: dict = Body(...)):
                               body.get("otp") or None)
     except SynologyError as e:
         if e.code not in (0, 403):
-            _fails.setdefault(ip, []).append(time.time())
+            failed(*keys)
         raise HTTPException(428 if e.code == 403 else (502 if e.code == 0 else 401), str(e))
     resp = JSONResponse({"ok": True, "user": user})
     set_session(resp, request, user, "dsm")
@@ -400,13 +465,13 @@ async def login(request: Request, body: dict = Body(...)):
 
 
 @app.get("/auth/sso")
-async def sso_login():
+async def sso_login(request: Request):
     try:
         url, cookie = await auth.sso_start(config)
     except Exception as e:
         return RedirectResponse(f"/?fel={type(e).__name__}", status_code=302)
     resp = RedirectResponse(url, status_code=302)
-    resp.set_cookie(auth.STATE_COOKIE, cookie, max_age=600, httponly=True, samesite="lax")
+    resp.set_cookie(auth.STATE_COOKIE, cookie, max_age=600, httponly=True, samesite="lax", secure=is_https(request))
     return resp
 
 
@@ -444,13 +509,11 @@ async def get_config(request: Request):
         "types": {"common": COMMON_TYPES, "all": COCO_TYPES, "names": TYPE_NAMES_SV},
         "models": detector.status()["available"],
         "mode": modes.info(),
-        "trigger_base": str(request.base_url).rstrip("/"),
+        "trigger_base": base_url(request),
     }
 
 
 def validate_auth(request, a):
-    if isinstance(a.get("allowed_users"), str):
-        a["allowed_users"] = [u.strip() for u in a["allowed_users"].replace("\n", ",").split(",") if u.strip()]
     me = current_user(request)
     if a.get("allowed_users") and me.lower() not in [u.lower() for u in a["allowed_users"]]:
         raise err(400, "Du ({me}) måste finnas med bland tillåtna konton", me=me)
@@ -465,8 +528,12 @@ async def put_settings(request: Request, body: dict = Body(...)):
     allowed = ("synology", "auth", "detector", "defaults", "storage", "public_url", "language", "timezone",
                "modes", "mode_auto")
     new = unmask({k: v for k, v in body.items() if k in allowed}, old)
+    try:
+        validate.settings(new, {m["name"] for m in detector.status()["available"]})
+    except validate.Invalid as e:
+        raise invalid(e)
     if "auth" in new:
-        validate_auth(request, new["auth"])
+        validate_auth(request, {**old["auth"], **new["auth"]})
     if "timezone" in new:
         try:
             apply_timezone(new["timezone"])
@@ -474,19 +541,10 @@ async def put_settings(request: Request, body: dict = Body(...)):
             raise err(400, "Ogiltig tidszon: {tz}", tz=new["timezone"])
     if new.get("language") not in (None, "sv", "en"):
         new.pop("language")
-    if "modes" in new:
-        clean, seen = [], set()
-        for m in new["modes"] or []:
-            mid = str(m.get("id") or "").strip()
-            if mid and mid not in seen:
-                seen.add(mid)
-                clean.append({"id": mid, "name": str(m.get("name") or "").strip()})
-        if not clean:
-            raise err(400, "Okänt läge")
-        new["modes"] = clean
-
     def apply(d):
         for k, v in new.items():
+            if k == "auth" and isinstance(v.get("sso"), dict):
+                v = {**v, "sso": {**d["auth"].get("sso", {}), **v["sso"]}}
             if isinstance(v, dict) and isinstance(d.get(k), dict):
                 d[k] = {**d[k], **v}
             else:
@@ -508,8 +566,8 @@ async def put_settings(request: Request, body: dict = Body(...)):
             if d["mode"].get("current") not in ids:
                 d["mode"]["current"] = new["modes"][0]["id"]
         config.update(cleanup)
-    if "mode_auto" in new:
-        modes.homemode = None  # läs om Home Mode direkt
+    if "mode_auto" in new and (new["mode_auto"].get("homemode") or old["mode_auto"]["homemode"]) != old["mode_auto"]["homemode"]:
+        modes.homemode = None  # ändrad koppling: läs om Home Mode direkt
         asyncio.create_task(modes.poll_homemode())
     if "synology" in new:
         ss.reset()
@@ -540,11 +598,38 @@ async def import_settings(request: Request, body: dict = Body(...)):
     if "_synoargus" not in body or not isinstance(body.get("cameras"), dict):
         raise err(400, "Filen är inte en SynoArgus-export")
     old = config.get()
-    body = {k: v for k, v in body.items() if k not in ("_synoargus", "secret", "setup_done")}
-    notis = unmask_notifiers(body.pop("notifiers", []), old.get("notifiers"))
-    new = unmask(body, old)
-    new["notifiers"] = notis
-    a = new.get("auth") or {}
+    keep = ("language", "timezone", "synology", "auth", "detector", "defaults", "storage", "public_url", "modes",
+            "mode_auto", "trigger_token")
+    try:
+        notis = validate.notifier_list(body.get("notifiers") or [], notifiers.KINDS)
+        notis = unmask_notifiers(notis, old.get("notifiers"))
+        notis = [{**notifiers.new_notifier(n["type"]), **n} for n in notis]
+        new = unmask({k: v for k, v in body.items() if k in keep}, old)
+        validate.settings(new)
+        if new.get("language") not in ("sv", "en"):
+            new.pop("language", None)
+        if not isinstance(new.get("trigger_token"), str) or len(new.get("trigger_token") or "") < 8:
+            new.pop("trigger_token", None)
+        cams = {}
+        for cname, c in body["cameras"].items():
+            if not isinstance(cname, str) or not cname.strip() or len(cname) > 200:
+                raise validate.Invalid("cameras")
+            cams[cname] = {**camera_defaults(cname), **validate.camera(c, COCO_TYPES), "name": cname}
+        new["cameras"] = cams
+        new["notifiers"] = notis
+        if isinstance(body.get("watches"), dict):
+            new["watches"] = {k: watch_mod.clean(v) for k, v in body["watches"].items() if k in cams}
+    except validate.Invalid as e:
+        raise invalid(e)
+    if "timezone" in new:
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(new["timezone"])
+        except Exception:
+            new.pop("timezone")
+    a = new.setdefault("auth", {})
+    a = {**old["auth"], **a, "sso": {**old["auth"].get("sso", {}), **(a.get("sso") or {})}}
+    new["auth"] = a
     me = current_user(request)
     if a.get("allowed_users") and me.lower() not in [u.lower() for u in a["allowed_users"]]:
         a["allowed_users"].append(me)  # lås inte ute den som importerar
@@ -553,10 +638,13 @@ async def import_settings(request: Request, body: dict = Body(...)):
 
     def apply(d):
         for k, v in new.items():
-            if isinstance(v, dict) and isinstance(d.get(k), dict) and k != "cameras":
+            if isinstance(v, dict) and isinstance(d.get(k), dict) and k not in ("cameras", "watches"):
                 d[k] = {**d[k], **v}
             else:
                 d[k] = v
+        ids = {m["id"] for m in d["modes"]}
+        if d["mode"].get("current") not in ids:
+            d["mode"]["current"] = d["modes"][0]["id"]
     config.update(apply)
     ss.reset()
     try:
@@ -573,19 +661,23 @@ async def ss_cameras(request: Request):
     try:
         return {"cameras": await ss.list_cameras()}
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, safe_error(e))
 
 
 @app.put("/api/cameras/{name}")
 async def put_camera(name: str, request: Request, body: dict = Body(...)):
     require(request)
+    if not name.strip() or len(name) > 200:
+        raise err(400, "Okänd kamera")
+    try:
+        clean = validate.camera(body, COCO_TYPES)
+    except validate.Invalid as e:
+        raise invalid(e)
+    clean.pop("action_rule", None)
 
     def apply(d):
-        cam = d["cameras"].get(name) or camera_defaults(name, body.get("ss_id"))
-        for k in ("enabled", "types", "threshold", "min_width", "min_height", "cooldown_s", "delay_s",
-                  "max_snapshots", "wait_ms", "zones", "ss_id", "modes"):
-            if k in body:
-                cam[k] = body[k]
+        cam = d["cameras"].get(name) or camera_defaults(name, clean.get("ss_id"))
+        cam.update(clean)
         cam["name"] = name
         d["cameras"][name] = cam
     config.update(apply)
@@ -595,7 +687,9 @@ async def put_camera(name: str, request: Request, body: dict = Body(...)):
 @app.delete("/api/cameras/{name}")
 async def delete_camera(name: str, request: Request):
     require(request)
-    config.update(lambda d: d["cameras"].pop(name, None))
+    if watch.running() == name:
+        await watch.stop("manuellt")
+    config.update(lambda d: (d["cameras"].pop(name, None), d.setdefault("watches", {}).pop(name, None)))
     return {"ok": True}
 
 
@@ -608,11 +702,11 @@ def _jpeg(img, q=85):
 @app.get("/api/cameras/{name}/snapshot")
 async def camera_snapshot(name: str, request: Request):
     require(request)
-    cam = (config.get("cameras") or {}).get(name) or camera_defaults(name)
+    cam = cam_or_404(name)
     try:
         img = await engine.grab(cam)
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, safe_error(e))
     return Response(_jpeg(img), media_type="image/jpeg")
 
 
@@ -620,7 +714,7 @@ async def camera_snapshot(name: str, request: Request):
 async def camera_live(name: str, request: Request, ai: int = 0):
     """En bild till livebilden, med AI-rutor om ai=1. Webbläsaren hämtar bild efter bild."""
     require(request)
-    cam = (config.get("cameras") or {}).get(name) or camera_defaults(name)
+    cam = cam_or_404(name)
     try:
         img = await engine.grab(cam)
         if ai:
@@ -630,7 +724,7 @@ async def camera_live(name: str, request: Request, ai: int = 0):
         else:
             jpeg = await asyncio.to_thread(_jpeg, img, 80)
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, safe_error(e))
     return Response(jpeg, media_type="image/jpeg", headers={"X-AI-ms": str(detector.last_ms or "")})
 
 
@@ -638,8 +732,11 @@ async def camera_live(name: str, request: Request, ai: int = 0):
 async def camera_test(name: str, request: Request, body: dict = Body(default={})):
     """Tar en bild och kör AI:n utan att larma. Visar alla träffar och varför de godtas eller inte."""
     require(request)
-    cam = deepcopy((config.get("cameras") or {}).get(name) or camera_defaults(name))
-    cam.update({k: v for k, v in (body or {}).items() if k in cam})
+    cam = deepcopy(cam_or_404(name))
+    try:
+        cam.update({k: v for k, v in validate.camera(body or {}, COCO_TYPES).items() if k in cam})
+    except validate.Invalid as e:
+        raise invalid(e)
     try:
         await asyncio.to_thread(engine.ensure_model)
         img = await engine.grab(cam)
@@ -648,7 +745,7 @@ async def camera_test(name: str, request: Request, body: dict = Body(default={})
         ms = round((time.time() - t) * 1000)
         jpeg = await asyncio.to_thread(draw, img, dets, cam.get("zones"), True)
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, safe_error(e))
     return {"ms": ms, "width": img.size[0], "height": img.size[1], "detections": dets,
             "alarm": bool(valid), "image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}
 
@@ -766,6 +863,102 @@ async def md_view_for(camera):
 calib = CalibrationManager(config, engine, md_view_for)
 
 
+watch = watch_mod.WatchManager(config, engine, ss)
+watch.calib_active = calib.active
+calib.watch_active = watch.running
+
+
+def _busy_err(e):
+    what, cam = e.args
+    if what == "calibration":
+        return err(409, "En kalibrering pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.", cam=cam)
+    return err(409, "En bevakning pågår redan på {cam}. Stoppa den först.", cam=cam)
+
+
+async def _watch_start(camera, occupied, source):
+    try:
+        return await watch.start(camera, occupied=occupied, source=source)
+    except watch_mod.Busy as e:
+        raise _busy_err(e)
+    except ValueError as e:
+        if e.args and e.args[0] == "zone":
+            raise err(400, "Rita en zon och spara bevakningen först")
+        raise err(404, "Okänd kamera")
+
+
+@app.api_route("/api/watch", methods=["GET", "POST"])
+async def watch_webhook(token: str = "", camera: str = "", action: str = "status", occupied: int = 0):
+    """Starta/stoppa bevakning från t.ex. Homey: ?camera=<namn>&action=start|stop|status[&occupied=1]"""
+    check_token(token)
+    action = action.lower()
+    if action not in ("start", "stop", "status"):
+        raise err(400, "Okänd åtgärd (start, stop eller status)")
+    names = [c for c, w in (config.get("watches") or {}).items() if w.get("zone")]
+    if action == "start":
+        if not camera and len(names) == 1:
+            camera = names[0]
+        await _watch_start(camera, bool(occupied), "webhook")
+    elif action == "stop":
+        if not camera or watch.running() == camera:
+            await watch.stop("webhook")
+    st = watch.status()
+    return {"active": st["active"], "elapsed": st.get("elapsed"), "state": st.get("state"), "configured": names}
+
+
+@app.get("/api/watches")
+async def watches_get(request: Request):
+    require(request)
+    return {"watches": config.get("watches") or {}, "defaults": watch_mod.defaults(), "status": watch.status(),
+            "calibration": calib.active(), "base": (config.get("public_url") or base_url(request)).rstrip("/"),
+            "token": config.get("trigger_token")}
+
+
+@app.get("/api/watches/status")
+async def watches_status(request: Request):
+    require(request)
+    return watch.status()
+
+
+@app.put("/api/watches/{name}")
+async def watch_put(name: str, request: Request, body: dict = Body(...)):
+    require(request)
+    cam_or_404(name)
+    try:
+        w = watch_mod.clean(body)
+    except validate.Invalid as e:
+        raise invalid(e)
+    known = {n["id"] for n in config.get("notifiers") or []}
+    for e in w["events"].values():
+        e["notifiers"] = [i for i in e["notifiers"] if i in known]
+    config.update(lambda d: d.setdefault("watches", {}).__setitem__(name, w))
+    watch.reload(name)
+    return {"ok": True, "watch": w}
+
+
+@app.delete("/api/watches/{name}")
+async def watch_delete(name: str, request: Request):
+    require(request)
+    if watch.running() == name:
+        await watch.stop("manuellt")
+    config.update(lambda d: d.setdefault("watches", {}).pop(name, None))
+    return {"ok": True}
+
+
+@app.post("/api/watches/{name}/action")
+async def watch_action(name: str, request: Request, body: dict = Body(...)):
+    require(request)
+    cam_or_404(name)
+    action = (body or {}).get("action")
+    if action == "start":
+        await _watch_start(name, bool(body.get("occupied")), "manuellt")
+    elif action == "stop":
+        if watch.running() == name:
+            await watch.stop("manuellt")
+    else:
+        raise err(400, "Okänd åtgärd")
+    return watch.status()
+
+
 async def _on_trigger(name, cam):
     try:
         await calib.on_reaction(name, cam)
@@ -815,6 +1008,9 @@ async def calibration_post(name: str, request: Request, body: dict = Body(...)):
         else:
             raise err(400, "Okänd åtgärd")
     except BusyError as e:
+        if str(e.args[0]).startswith("watch:"):
+            raise err(409, "En bevakning pågår på {cam}. Bevakning och kalibrering kan inte köras samtidigt.",
+                      cam=e.args[0][6:])
         raise err(409, "En kalibrering pågår redan på {cam}. Stoppa den eller vänta tills den är klar.", cam=e.args[0])
     except ValueError:
         raise err(409, "En kalibrering pågår redan")
@@ -865,9 +1061,40 @@ def _set_keys(obj, keys, value):
     return obj
 
 
+SENSITIVE_KEYS = ("password", "passwd", "iftttkey", "evtwebhooktoken", "headers", "httpbody", "username")
+
+
+def _mask_rules(obj):
+    """Rådata för felsökning: lösenord, nycklar och andra reglers adresser visas inte."""
+    def url(sv):
+        if not isinstance(sv, str) or not sv.startswith(("http://", "https://")):
+            return sv
+        if "/api/trigger/" in sv:
+            return re.sub(r"token=[^&\s]+", "token=***", sv)
+        m = re.match(r"^(https?://[^/?#]+)", sv)
+        return (m.group(1) if m else "") + "/***"
+
+    def walk(o):
+        if isinstance(o, dict):
+            return {k: (MASK if k.lower() in SENSITIVE_KEYS and v not in ("", None) and not isinstance(v, (dict, list))
+                        else walk(v)) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        if isinstance(o, str):
+            st = o.strip()
+            if st[:1] in "[{":
+                try:
+                    return json.dumps(walk(json.loads(st)), separators=(",", ":"))
+                except ValueError:
+                    pass
+            return url(o)
+        return o
+    return walk(obj)
+
+
 def _trigger_url(request, name):
     from urllib.parse import quote
-    base = (config.get("public_url") or str(request.base_url)).rstrip("/")
+    base = (config.get("public_url") or base_url(request)).rstrip("/")
     return f"{base}/api/trigger/{quote(name, safe='')}?token={quote(config.get('trigger_token'), safe='')}"
 
 
@@ -935,7 +1162,7 @@ def _ss_err(e, what):
                         "för att läsa och ändra rörelsedetekteringen.")
     if isinstance(e, HTTPException):
         return e
-    return HTTPException(502, str(e))
+    return HTTPException(502, safe_error(e))
 
 
 async def _rules():
@@ -965,7 +1192,7 @@ async def actionrule_get(name: str, request: Request):
     if stored and not stored.get("confirmed") and any(r["current"] for r in mine):
         stored["confirmed"] = True
         _remember_rule(name, stored)
-    return {"url": url, "rules": mine, "stored": stored, "count": len(rules), "raw": raw}
+    return {"url": url, "rules": mine, "stored": stored, "count": len(rules), "raw": _mask_rules(raw)}
 
 
 @app.post("/api/cameras/{name}/actionrule")
@@ -1040,9 +1267,11 @@ async def put_notifiers(request: Request, body: list = Body(...)):
     require(request)
     old = {n["id"]: n for n in config.get("notifiers") or []}
     out = []
+    try:
+        validate.notifier_list(body, notifiers.KINDS)
+    except validate.Invalid:
+        raise err(400, "Okänd typ av notifiering")
     for n in body:
-        if n.get("type") not in notifiers.KINDS:
-            raise err(400, "Okänd typ av notifiering")
         base = notifiers.new_notifier(n["type"])
         if n.get("id") in old:
             base = old[n["id"]]
@@ -1100,7 +1329,8 @@ async def status(request: Request):
         st = engine.state.get(name)
         cams[name] = {"busy": st.busy, "last": st.last_result, "last_alarm": st.last_alarm or None} if st else {}
     return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30],
-            "update": _update["data"], "mode": modes.info(), "priority": _priority(), **storage.stats()}
+            "update": _update["data"], "mode": modes.info(), "priority": _priority(),
+            "watch": {k: v for k, v in watch.status().items() if k != "log"}, **storage.stats()}
 
 
 def _priority():
@@ -1130,6 +1360,25 @@ async def update(request: Request, force: int = 0):
 # ------------------------------------------------------------------ webbgränssnitt
 
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+
+
+@app.get("/manifest.webmanifest")
+async def manifest():
+    """Gör att SynoArgus kan installeras som app (kräver https)."""
+    return JSONResponse({
+        "name": "SynoArgus", "short_name": "SynoArgus", "id": "/", "start_url": "/", "scope": "/",
+        "display": "standalone", "background_color": "#14324a", "theme_color": "#14324a",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/static/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ]}, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(os.path.join(HERE, "static", "sw.js"), media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 
 @app.get("/")

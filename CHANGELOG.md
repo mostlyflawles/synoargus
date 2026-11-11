@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1 (build 13) – 2026-11-11
+- **Overview:**
+  - Fixed: recordings from the NAS were not shown and could not be played when Surveillance Station sent the recording list without start and stop times. The start is now read from the file name and the end is the next recording's start; the timeline shows everything the NAS has recorded, not only SynoArgus events.
+  - The tab is now first in the menu.
+  - New buttons: **<!** previous event (replaces *Last event*) and **!>** next event (after the last one: live). Order: <! −1 min −10 s ⏸/▶ +10 s +1 min LIVE !>.
+  - Pause/play is always shown; pause in live freezes the picture.
+  - Date and time on their own line below the buttons.
+- Raw data for troubleshooting: Surveillance Station's stream keys (`StmKey`) are masked, the parsed recordings and a two-second test playback are included.
+- go2rtc errors are shown per camera and cleared when the stream works again.
+
 ## 0.7 (build 12) – 2026-11-11
 - **Overview** (experimental), new tab: all cameras live in a grid (1×2, 1×3, 2×2, 2×3, pages if there are more cameras), tap for full screen with sound, *Last event*, −1 min, −10 s, +10 s, +1 min, pause and LIVE, and a scrollable timeline with Surveillance Station recordings and SynoArgus events. Live video via the bundled [go2rtc](https://github.com/AlexxIT/go2rtc) (MIT), which listens on 127.0.0.1 only; SynoArgus passes the video to logged-in users over a WebSocket. Falls back to snapshots if live video cannot be played. Optional own stream address per camera. Raw data for troubleshooting.
 - **Watch:**

@@ -1028,14 +1028,34 @@ async def overview_raw(request: Request):
     require(request)
     await streams.ensure(force=True)
     ids = _cam_ids()
-    rec_raw = None
+    rec_raw, parsed, play = None, [], None
     if ids:
         try:
-            _, rec_raw = await ss.recordings(list(ids), time.time() - 3600, time.time(), limit=5)
+            items, rec_raw = await ss.recordings(list(ids), time.time() - 3 * 3600, time.time(), limit=20)
+            parsed = [{"camera": ids.get(r["cam"]), "id": r["id"], "start": _iso(r["start"]), "stop": _iso(r["stop"]),
+                       "estimated": bool(r.get("estimated"))} for r in items]
+            if items:                                   # provspela 2 s av den senaste inspelningen
+                r = items[-1]
+                try:
+                    resp = await ss.open_recording(r["id"], 0, 2000)
+                    n = 0
+                    async for chunk in resp.aiter_bytes():
+                        n += len(chunk)
+                        if n > 65536:
+                            break
+                    await resp.aclose()
+                    play = {"id": r["id"], "ok": n > 0, "content_type": resp.headers.get("content-type"), "bytes": n}
+                except Exception as e:
+                    play = {"id": r["id"], "ok": False, "error": str(e)}
         except Exception as e:
             rec_raw = {"error": str(e)}
     return {"live": streams.status(), "live_paths": json.loads(streams_mod.mask(json.dumps(streams.raw))),
-            "recordings": _mask_rules(rec_raw)}
+            "recordings_parsed": parsed, "recording_test": play,
+            "recordings": json.loads(streams_mod.mask(json.dumps(_mask_rules(rec_raw))))}
+
+
+def _iso(ts):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts else None
 engine.dispatcher = dispatcher
 watch = watch_mod.WatchManager(config, engine, ss)
 

@@ -1,5 +1,7 @@
 """Klient för Synology Surveillance Station och DSM-inloggning."""
 import asyncio
+import os
+import re
 import time
 import json
 import logging
@@ -225,21 +227,7 @@ class SurveillanceStation:
             "offset": "0", "limit": str(limit), "cameraIds": ",".join(str(i) for i in cam_ids),
             "fromTime": str(int(start)), "toTime": str(int(end))})
         items = (data or {}).get("recordings") or (data or {}).get("events") or []
-        out = []
-        for it in items:
-            g = lambda *keys: next((it[k] for k in keys if it.get(k) not in (None, "")), None)
-            rid, cam = g("id", "recordingId", "eventId"), g("cameraId", "camera_id", "camId")
-            st, sp = g("startTime", "start_time", "startTm"), g("stopTime", "stop_time", "stopTm", "endTime")
-            if rid is None or cam is None or st is None:
-                continue
-            st = float(st)
-            sp = float(sp) if sp else time.time()      # pågående inspelning
-            if st > 1e11:                               # millisekunder
-                st, sp = st / 1000, (sp / 1000 if sp > 1e11 else sp)
-            out.append({"id": rid, "cam": int(cam), "start": st, "stop": max(st, sp),
-                        "reason": g("reason", "eventType", "recType")})
-        out.sort(key=lambda r: r["start"])
-        return out, data
+        return parse_recordings(items), data
 
     async def open_recording(self, rec_id, offset_ms, play_ms):
         """Öppnar en del av en inspelning som ström (mp4). Returnerar httpx-svaret – stäng det efteråt."""
@@ -341,3 +329,69 @@ def find_md_params(data):
             if hit is not None:
                 return hit
     return None
+
+
+# ---------------------------------------------------------------- inspelningar
+_FILE_MS = re.compile(r"-(\d{8})-(\d{6})-(\d{12,13})(?:-|\.|$)")
+_FILE_DT = re.compile(r"(\d{8})-(\d{6})")
+DEFAULT_REC_S = 1800          # om inget annat går att räkna ut: Surveillance Station delar inspelningar i 30 min
+
+
+def _rec_start_from_path(path):
+    """Starttiden ur filnamnet, t.ex. OutDoor1-Public-20261111-105152-1794390712421-7.mp4.
+    Vissa versioner av Surveillance Station skickar inte startTime/stopTime i listan."""
+    path = os.path.basename(str(path or ""))
+    m = _FILE_MS.search(path)
+    if m:
+        return int(m.group(3)) / 1000
+    m = _FILE_DT.search(path)
+    if m:
+        try:
+            return time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))   # NAS:ens lokala tid
+        except ValueError:
+            return None
+    return None
+
+
+def parse_recordings(items, now=None):
+    """[{id, cam, start, stop, reason}] ur Recording.List, oavsett om svaret har tider eller bara filnamn.
+    Saknas sluttid används nästa inspelnings start för samma kamera (högst en normal inspelningslängd),
+    och för den senaste: nu."""
+    now = now or time.time()
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        g = lambda *keys: next((it[k] for k in keys if it.get(k) not in (None, "")), None)
+        rid, cam = g("id", "recordingId", "eventId"), g("cameraId", "camera_id", "camId")
+        st, sp = g("startTime", "start_time", "startTm"), g("stopTime", "stop_time", "stopTm", "endTime")
+        if st is None:
+            st = _rec_start_from_path(g("filePath", "path", "fileName", "name"))
+        if rid is None or cam is None or st is None:
+            continue
+        st = float(st)
+        sp = float(sp) if sp else None
+        if st > 1e11:                               # millisekunder
+            st = st / 1000
+        if sp and sp > 1e11:
+            sp = sp / 1000
+        out.append({"id": rid, "cam": int(cam), "start": st, "stop": sp,
+                    "reason": g("reason", "eventType", "recType")})
+    out.sort(key=lambda r: (r["cam"], r["start"]))
+    by_cam = {}
+    for r in out:
+        by_cam.setdefault(r["cam"], []).append(r)
+    for recs in by_cam.values():
+        gaps = sorted(b["start"] - a["start"] for a, b in zip(recs, recs[1:]) if b["start"] > a["start"])
+        usual = min(3600.0, gaps[len(gaps) // 2]) if len(gaps) >= 2 else DEFAULT_REC_S
+        for i, r in enumerate(recs):
+            if r["stop"] is not None:
+                r["stop"] = max(r["start"], r["stop"])
+                continue
+            nxt = recs[i + 1]["start"] if i + 1 < len(recs) else None
+            limit = r["start"] + max(usual, 60) * 1.05
+            r["stop"] = min(nxt, limit) if nxt else min(now, limit)
+            r["stop"] = max(r["start"], r["stop"])
+            r["estimated"] = True
+    out.sort(key=lambda r: r["start"])
+    return out

@@ -41,7 +41,8 @@ streams: {}
 
 def mask(text):
     """Tar bort användarnamn och lösenord ur adresser (rtsp://user:pass@host -> rtsp://***@host)."""
-    return re.sub(r"(\w+://)[^/@\s]+@", r"\1***@", str(text or ""))
+    text = re.sub(r"(\w+://)[^/@\s]+@", r"\1***@", str(text or ""))
+    return re.sub(r'(StmKey=(?:\\?"|%22)?)[0-9A-Za-z]+', r"\1***", text)       # Surveillance Stations strömnyckel
 
 
 def stream_name(cam):
@@ -78,7 +79,8 @@ class Streams:
     def status(self):
         return {"available": self.available, "running": bool(self.proc and self.proc.returncode is None),
                 "error": self.error,
-                "sources": {v["camera"]: {"from": v["from"], "url": mask(v["url"])} for v in self.sources.values()}}
+                "sources": {v["camera"]: {"from": v["from"], "url": mask(v["url"]), "error": v.get("error")}
+                            for v in self.sources.values()}}
 
     # ---------------------------------------------------------------- processen
     async def start(self):
@@ -152,16 +154,20 @@ class Streams:
                 url = _with_credentials(url, syn.get("user"), syn.get("password"))
             if url:
                 wanted[stream_name(cam)] = {"camera": cam["name"], "url": url, "from": source}
+        errors = []
         async with httpx.AsyncClient(timeout=5) as c:
             for name, s in wanted.items():
-                if self.sources.get(name, {}).get("url") == s["url"]:
+                old = self.sources.get(name, {})
+                if old.get("url") == s["url"] and not old.get("error"):
                     continue
                 try:
                     r = await c.put(API + "/api/streams", params={"name": name, "src": s["url"]})
                     if r.status_code >= 400:
-                        raise RuntimeError(f"HTTP {r.status_code}")
+                        text = (getattr(r, "text", "") or "").strip()[:200]
+                        raise RuntimeError(f"HTTP {r.status_code}" + (f" {text}" if text else ""))
                 except Exception as e:
-                    self.error = f"go2rtc: {mask(e)}"
+                    s["error"] = f"go2rtc: {mask(e)}"
+                    errors.append(f"{s['camera']}: {s['error']}")
                     log.warning("go2rtc, ström %s: %s", s["camera"], mask(e))
                     continue
             for name in set(self.sources) - set(wanted):
@@ -171,3 +177,5 @@ class Streams:
                     pass
         self.sources = wanted
         self._refreshed = time.time()
+        if self.proc is None or self.proc.returncode is None:
+            self.error = "; ".join(errors) or None          # felet gäller bara så länge det finns kvar

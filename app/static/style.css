@@ -193,8 +193,9 @@ pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap:
 .ov-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #c9d6e2; font-size: 13px; text-align: center; padding: 10px; }
 .ov-bar { position: relative; margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
 .ov-ctrl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
-.ov-ctrl .btn { padding: 7px 10px; }
-.ov-time { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 74px; text-align: center; }
+.ov-ctrl .btn { padding: 7px 10px; min-width: 44px; font-variant-numeric: tabular-nums; }
+.ov-time { font-variant-numeric: tabular-nums; font-weight: 600; text-align: center; margin-top: 8px; }
+.ov-full-head .ov-time { margin-top: 0; }
 .ov-tl { position: relative; overflow-x: auto; overflow-y: hidden; height: 46px; margin-top: 10px; border-top: 1px solid var(--line); cursor: grab; scrollbar-width: thin; touch-action: pan-x; }
 .ov-track { position: relative; height: 100%; }
 .ov-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }

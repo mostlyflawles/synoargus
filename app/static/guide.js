@@ -69,7 +69,7 @@ window.GUIDE = {
 <ul>
   <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor.</li>
   <li><b>Tryck på en kamera</b> för helskärm med ljud. <i>Ljud</i> slår av och på.</li>
-  <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. <i>−1 min</i>, <i>−10 s</i>, <i>+10 s</i>, <i>+1 min</i> hoppar, <i>Senaste händelse</i> spelar från strax före det senaste larmet och <i>LIVE</i> går tillbaka till livebild.</li>
+  <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. Knapparna: <b>&lt;!</b> föregående händelse (i live: den senaste), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> och <b>!&gt;</b> nästa händelse. En händelse spelas från 3 s före. Paus i live fryser bilden; ▶ går tillbaka till live. Datum och tid för det som visas står under knapparna.</li>
 </ul>
 <h4>Bra att veta</h4>
 <ul>
@@ -77,6 +77,7 @@ window.GUIDE = {
   <li>Adressen till strömmen hämtas från Surveillance Station. Visas en kamera inte kan du ange en egen adress under <b>Kameror &gt; Videoström för Översikt</b> (t.ex. kamerans egen RTSP-adress).</li>
   <li>Ljud kräver AAC eller G.711 (PCMA/PCMU) från kameran. Webbläsare startar ofta video utan ljud tills man trycker.</li>
   <li>Går livevideon inte att spela visas en bild varannan sekund i stället.</li>
+  <li>Tidslinjen visar allt som Surveillance Station har spelat in, även när SynoArgus inte har larmat. Saknar NAS:en start- och sluttid i svaret läses tiden ur filnamnet.</li>
   <li>Inspelningar kräver att SynoArgus-kontot får se inspelningar i Surveillance Station (fel 105 = saknar behörighet).</li>
   <li>Varje kamera i live är en ström från NAS:en. Fyra kameror samtidigt belastar en DS918+ något – stäng fliken när du inte tittar.</li>
   <li><i>Visa rådata för felsökning</i> visar vad Surveillance Station svarar, utan lösenord.</li>
@@ -264,7 +265,7 @@ window.GUIDE = {
 <ul>
   <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages.</li>
   <li><b>Tap a camera</b> for full screen with sound. <i>Sound</i> toggles it.</li>
-  <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. <i>−1 min</i>, <i>−10 s</i>, <i>+10 s</i>, <i>+1 min</i> jump, <i>Last event</i> plays from just before the latest alarm and <i>LIVE</i> returns to live view.</li>
+  <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. The buttons: <b>&lt;!</b> previous event (in live: the latest), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> and <b>!&gt;</b> next event. An event is played from 3 s before. Pause in live freezes the picture; ▶ returns to live. The date and time of what is shown are below the buttons.</li>
 </ul>
 <h4>Good to know</h4>
 <ul>
@@ -272,6 +273,7 @@ window.GUIDE = {
   <li>The stream address is fetched from Surveillance Station. If a camera is not shown you can enter your own address under <b>Cameras &gt; Video stream for Overview</b> (e.g. the camera's own RTSP address).</li>
   <li>Sound requires AAC or G.711 (PCMA/PCMU) from the camera. Browsers often start video muted until you tap.</li>
   <li>If live video cannot be played, an image every other second is shown instead.</li>
+  <li>The timeline shows everything Surveillance Station has recorded, also when SynoArgus has not alarmed. If the NAS leaves out start and stop times, the time is read from the file name.</li>
   <li>Recordings require that the SynoArgus account may view recordings in Surveillance Station (error 105 = missing permission).</li>
   <li>Each live camera is a stream from the NAS. Four cameras at once put some load on a DS918+ – close the tab when you are not watching.</li>
   <li><i>Show raw data for troubleshooting</i> shows what Surveillance Station answers, without passwords.</li>

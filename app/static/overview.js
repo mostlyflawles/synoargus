@@ -2,7 +2,8 @@
 'use strict';
 
 Object.assign(EN, {
-  'Översikt': 'Overview', 'Live': 'Live', 'Senaste händelse': 'Last event', 'Inga händelser': 'No events',
+  'Översikt': 'Overview', 'Live': 'Live', 'Föregående händelse': 'Previous event', 'Nästa händelse': 'Next event', 'Inga händelser': 'No events',
+  'Pausa / spela': 'Pause / play', 'Inga fler händelser – visar live': 'No more events – showing live',
   'Ingen inspelning': 'No recording', 'Laddar…': 'Loading…', 'Bild varannan sekund': 'Image every other second',
   'Livevideo är inte tillgänglig ({e}). Kamerorna visas som bilder varannan sekund.': 'Live video is not available ({e}). The cameras are shown as images every other second.',
   'go2rtc saknas': 'go2rtc is missing', 'Ljud': 'Sound', 'Stäng': 'Close', 'Spela upp': 'Play', 'Pausa': 'Pause',
@@ -52,12 +53,13 @@ class LivePlayer {
       return;
     }
     this.got = true;
+    if (this.frozen) return;                 // pausad live: släpp data tills vi går tillbaka till live
     this.queue.push(new Uint8Array(data));
     this.pump();
   }
   pump() {
     const sb = this.sb, v = this.video;
-    if (!sb || sb.updating || this.dead) return;
+    if (!sb || sb.updating || this.dead || this.frozen) return;
     if (v.buffered.length) {
       const end = v.buffered.end(v.buffered.length - 1), start = v.buffered.start(0);
       if (end - v.currentTime > 3) v.currentTime = end - 0.5;          // håll oss nära "nu"
@@ -106,13 +108,14 @@ async function renderOverview() {
     <div class="ov-grid" id="ovGrid"></div>
     <div class="ov-bar">
       <div class="ov-ctrl">
-        <button class="btn" data-c="last" title="${t('Senaste händelse')}">⟲ <span>${t('Senaste händelse')}</span></button>
+        <button class="btn" data-c="prev" title="${t('Föregående händelse')}">&lt;!</button>
         <button class="btn" data-c="-60">−1 min</button><button class="btn" data-c="-10">−10 s</button>
-        <span class="ov-time" id="ovTime">--:--:--</span>
+        <button class="btn" data-c="pause" id="ovPause" title="${t('Pausa / spela')}">⏸</button>
         <button class="btn" data-c="+10">+10 s</button><button class="btn" data-c="+60">+1 min</button>
-        <button class="btn" data-c="pause" id="ovPause" hidden>⏸</button>
         <button class="btn primary" data-c="live" id="ovLive">LIVE</button>
+        <button class="btn" data-c="next" title="${t('Nästa händelse')}">!&gt;</button>
       </div>
+      <div class="ov-time" id="ovTime">&nbsp;</div>
       <div class="ov-tlwrap"><div class="ov-tl" id="ovTl"><div class="ov-track" id="ovTrack"></div></div><div class="ov-cursor"></div></div>
       <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm med ljud. Dra tidslinjen för att spela upp inspelningar.')}
         <a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a></p><pre class="raw" id="ovRawBox" hidden></pre>
@@ -172,40 +175,65 @@ async function renderOverview() {
 
   // ---------------------------------------------------------------- tid och kontroller
   const now = () => Date.now() / 1000;
-  const fmt = ts => new Date(ts * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE');
+  const fmt = ts => {
+    const d = new Date(ts * 1000), loc = S.lang === 'en' ? 'en-GB' : 'sv-SE';
+    return d.toLocaleDateString(loc, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' + d.toLocaleTimeString(loc);
+  };
   function current() {
-    if (O.mode === 'live') return now();
+    if (O.mode === 'live') return O.frozenAt || now();
     const v = $$('.ov-tile video').find(x => !x.hidden && x.dataset.t0 && x.readyState > 0);
     return v ? Number(v.dataset.t0) + v.currentTime : O.T;
   }
   function seek(T, keepPlaying = true) {
     if (T >= now() - 5) return goLive();
-    O.mode = 'rec'; O.T = Math.round(T); O.playing = keepPlaying; O.follow = false;
-    $('#ovLive').classList.remove('primary'); $('#ovPause').hidden = false; $('#ovPause').textContent = O.playing ? '⏸' : '▶';
+    O.mode = 'rec'; O.T = Math.round(T); O.playing = keepPlaying; O.follow = false; O.frozenAt = null;
+    $('#ovLive').classList.remove('primary'); $('#ovPause').textContent = O.playing ? '⏸' : '▶';
     stopTiles();
     $$('.ov-tile[data-cam]', main).forEach(tile => startTile(tile, tile.dataset.cam, true));
     scrollTo(O.T);
   }
   function goLive() {
-    O.mode = 'live'; O.T = null; O.follow = true; O.playing = true;
-    $('#ovLive').classList.add('primary'); $('#ovPause').hidden = true;
+    O.mode = 'live'; O.T = null; O.follow = true; O.playing = true; O.frozenAt = null;
+    $('#ovLive').classList.add('primary'); $('#ovPause').textContent = '⏸';
     drawGrid(); scrollTo(now());
   }
   $('.ov-ctrl').addEventListener('click', e => {
     const c = e.target.closest('[data-c]')?.dataset.c; if (!c) return;
     if (c === 'live') return goLive();
-    if (c === 'last') {
-      if (!info.last_event) return toast(t('Inga händelser'));
-      return seek(info.last_event.ts - OVERVIEW_PRE);
-    }
+    if (c === 'prev' || c === 'next') return jumpEvent(c === 'next');
     if (c === 'pause') {
-      if (O.mode !== 'rec') return;
+      if (O.mode === 'live') {                              // frys bilden; play går tillbaka till live
+        if (O.frozenAt) return goLive();
+        O.frozenAt = now(); O.playing = false; $('#ovPause').textContent = '▶';
+        O.players.forEach(p => { p.frozen = true; });
+        O.timers.forEach(clearInterval); O.timers = [];
+        $$('.ov-tile video', main).forEach(v => v.pause());
+        return;
+      }
       O.playing = !O.playing; $('#ovPause').textContent = O.playing ? '⏸' : '▶';
       $$('.ov-tile video', main).forEach(v => { if (O.playing) v.play().catch(() => {}); else v.pause(); });
       return;
     }
     seek(current() + Number(c));
   });
+  // <! och !>: föregående / nästa larm räknat från där vi är (i live: det senaste)
+  function eventTimes() {
+    const ts = O.evs.filter(e => e.alarm).map(e => e.ts);
+    if (info.last_event) ts.push(info.last_event.ts);
+    return [...new Set(ts)].sort((a, b) => a - b);
+  }
+  function jumpEvent(forward) {
+    const pos = current(), list = eventTimes();
+    if (forward) {
+      if (O.mode === 'live' && !O.frozenAt) return toast(t('Inga fler händelser – visar live'));
+      const nx = list.find(ts => ts - OVERVIEW_PRE > pos + 1);
+      if (nx === undefined) { toast(t('Inga fler händelser – visar live')); return goLive(); }
+      return seek(nx - OVERVIEW_PRE);
+    }
+    const pv = list.filter(ts => ts - OVERVIEW_PRE < pos - 2).pop();
+    if (pv === undefined) return toast(t('Inga händelser'));
+    seek(pv - OVERVIEW_PRE);
+  }
   $('#ovLayouts').addEventListener('click', e => {
     const b = e.target.closest('[data-l]'); if (!b) return;
     layout = b.dataset.l; try { localStorage.setItem('synoargus.layout', layout); } catch (err) { /* */ }

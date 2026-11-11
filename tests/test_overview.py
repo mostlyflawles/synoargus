@@ -21,7 +21,29 @@ assert S.mask("go2rtc: dial rtsp://a:b@h/x failed") == "go2rtc: dial rtsp://***@
 assert S._with_credentials("rtsp://10.0.0.2:554/x", "svc", "p@ss") == "rtsp://svc:p%40ss@10.0.0.2:554/x"
 assert S._with_credentials("rtsp://a:b@10.0.0.2/x", "svc", "p") == "rtsp://a:b@10.0.0.2/x"
 assert S.stream_name({"name": "Yard", "ss_id": 5}) == "cam5" and S.stream_name({"name": "A b", "ss_id": None}) == "cam_A_b"
+assert S.mask('cameraId=1&StmKey=\\"3578496afb6f409b\\"') == 'cameraId=1&StmKey=\\"***\\"'
+assert S.mask("rtsp.cgi?Sms=1.unicast&StmKey=3578496afb6f409b") == "rtsp.cgi?Sms=1.unicast&StmKey=***"
 print("A mask OK")
+
+# ---- recordings without start/stop (only file names), as some Surveillance Station versions answer
+from app.synology import parse_recordings
+t0 = 1794388911.527
+thin = [{"cameraId": 1, "id": 2, "filePath": "20261111AM/OutDoor1-Public-20261111-105152-1794390712421-7.mp4"},
+        {"cameraId": 1, "id": 1, "filePath": "20261111AM/OutDoor1-Public-20261111-102151-1794388911527-7.mp4"},
+        {"cameraId": 5, "id": 3, "filePath": "x/Cam-20261111-100000-1794387600000-1.mp4"},
+        {"cameraId": 5, "id": 4, "startTime": 1794389000, "stopTime": 1794389060},
+        {"cameraId": 7, "id": 5, "filePath": "nothing-useful.mp4"},
+        {"cameraId": 8, "id": 6, "filePath": "In-20261111-090000-1794384000000-2.mp4"}]
+p = parse_recordings(thin, now=t0 + 2400)
+by = {r["id"]: r for r in p}
+assert set(by) == {1, 2, 3, 4, 6}, p
+assert by[1]["start"] == t0 and by[1]["stop"] == 1794390712.421           # up to the next file
+assert by[2]["stop"] == t0 + 2400                                          # the latest: until now
+assert by[3]["stop"] == 1794389000                                         # up to the next one of the same camera
+assert by[6]["stop"] == 1794384000 + 1800 * 1.05                           # alone: a normal length at most
+assert by[4]["stop"] == 1794389060 and not by[4].get("estimated")          # real times are kept
+assert [r["start"] for r in p] == sorted(r["start"] for r in p)
+print("A2 recordings from file names OK")
 
 # ---- ensure: SS address with credentials, a manual address, no repeated PUTs, removal
 class FakeSS:
@@ -37,12 +59,20 @@ async def flow():
     put = [c for c in httpx.CALLS if c["method"] == "PUT"]
     assert len(put) == 1 and put[0]["params"] == {"name": "cam5", "src": "rtsp://svc:p%40ss@192.168.1.2:554/Sms=5.unicast"}, put
     assert "p%40ss" not in json.dumps(st.status()) and st.status()["sources"]["Yard"]["from"] == "ss"
+    assert st.error is None
     httpx.CALLS.clear(); await st.ensure(); assert not httpx.CALLS and FakeSS.calls == 1   # cached
     config.update(lambda d: d["cameras"]["Hall"].__setitem__("stream_url", "rtsp://cam:pw@192.168.1.30/live"))
     st.refresh_soon(); await st.ensure()
     put = [c["params"]["name"] for c in httpx.CALLS if c["method"] == "PUT"]
     assert put == ["cam7"], httpx.CALLS                           # only the new one is sent again
-    assert st.status()["sources"]["Hall"] == {"from": "manual", "url": "rtsp://***@192.168.1.30/live"}
+    assert st.status()["sources"]["Hall"] == {"from": "manual", "url": "rtsp://***@192.168.1.30/live", "error": None}
+    # go2rtc refuses one stream: the error is shown for that camera, retried next time and cleared when it works
+    bad = httpx.Response(400, {}); bad.text = "bad source"; httpx.RESPONSES.append(bad)
+    config.update(lambda d: d["cameras"]["Hall"].__setitem__("stream_url", "rtsp://cam:pw@192.168.1.30/live3"))
+    st.refresh_soon(); await st.ensure()
+    assert st.status()["sources"]["Hall"]["error"].startswith("go2rtc: HTTP 400") and "Hall" in st.error, st.status()
+    httpx.CALLS.clear(); st.refresh_soon(); await st.ensure()
+    assert [c["params"]["name"] for c in httpx.CALLS if c["method"] == "PUT"] == ["cam7"] and st.error is None, st.status()
     config.update(lambda d: d["cameras"].pop("Yard"))
     httpx.CALLS.clear(); await st.ensure(force=True)
     assert [(c["method"], c["params"]) for c in httpx.CALLS] == [("DELETE", {"src": "cam5"})], httpx.CALLS

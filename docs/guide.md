@@ -346,7 +346,9 @@ The **Overview** tab shows all cameras at once, much like Multi View in Surveill
 
 - **Layouts** 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
 - **Tap a camera** for full screen with sound.
-- **Controls:** *Last event* (plays from 3 s before the latest alarm), −1 min, −10 s, +10 s, +1 min, pause and **LIVE**.
+- **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min, **LIVE** and **!>** next
+  event (after the last one: live). An event is played from 3 s before it. Pause in live freezes the picture; ▶ returns
+  to live. The date and time of what is shown are on a line below the buttons.
 - **Timeline** at the bottom: recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play
   from that point; scroll to the left to load earlier days.
 
@@ -360,9 +362,12 @@ How it works:
   in exports without secrets.
 - **Sound:** AAC is passed through; G.711 (PCMA/PCMU) is converted by go2rtc. Browsers start video muted until you tap.
 - If live video cannot be played, the tile falls back to a snapshot every other second.
+- The timeline shows **everything Surveillance Station has recorded** (continuous or on motion), not only SynoArgus
+  events. Some versions of Surveillance Station leave out start and stop times in the recording list; the start is then
+  read from the file name (`Camera-20261111-105152-<ms>-7.mp4`) and the end is the next recording's start.
 - **Recordings** are played through SynoArgus from Surveillance Station's recording API, five minutes at a time. The
   SynoArgus account must be allowed to view recordings (error 105 = missing permission).
-- *Show raw data for troubleshooting* shows what Surveillance Station returns, with passwords removed.
+- *Show raw data for troubleshooting* shows what Surveillance Station returns (passwords and stream keys removed), how the recordings were read and a two-second test playback.
 - Each live tile is a stream from the NAS. Close the tab when you are not watching.
 
 ## 8. Control cameras via webhook

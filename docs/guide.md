@@ -344,8 +344,12 @@ when most of the picture is zone, a person close to the camera is easily taken f
 
 The **Overview** tab shows all cameras at once, much like Multi View in Surveillance Station:
 
-- **Layouts** 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
-- **Tap a camera** for full screen with sound.
+- Overview is the **start page**.
+- **Layouts** 1 camera, 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
+- **Tap a camera** for full screen. Sound on at once is a setting (Settings > Other > Overview). **Zoom** by pinching,
+  with + / −, or by double-tapping; drag to move the picture, ⟲ resets.
+- **Tap the date and time** to choose a point in time to play from.
+- Where there is no recording, SynoArgus's own image from the event is shown instead.
 - **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min, **LIVE** and **!>** next
   event (after the last one: live). An event is played from 3 s before it. Pause in live freezes the picture; ▶ returns
   to live. The date and time of what is shown are on a line below the buttons.
@@ -367,7 +371,10 @@ How it works:
   read from the file name (`Camera-20261111-105152-<ms>-7.mp4`) and the end is the next recording's start.
 - **Recordings** are played through SynoArgus from Surveillance Station's recording API, five minutes at a time. The
   SynoArgus account must be allowed to view recordings (error 105 = missing permission).
-- *Show raw data for troubleshooting* shows what Surveillance Station returns (passwords and stream keys removed), how the recordings were read and a two-second test playback.
+- Playback that stands still is reloaded automatically (three attempts, then *Playback got stuck* – ▶ tries again).
+- *Show raw data for troubleshooting* (turn it on under Settings > Other > Overview) shows what Surveillance Station
+  returns (passwords and stream keys removed), how the recordings were read, a two-second test playback and the latest
+  playbacks.
 - Each live tile is a stream from the NAS. Close the tab when you are not watching.
 
 ## 8. Control cameras via webhook
@@ -511,11 +518,17 @@ Run it in test mode, raise the times, turn on *Only when the zone is occupied* a
 Look at the diagnostics line. Many duplicates: lower the images per second. A small share of the zone moving: make the
 zone tighter or check *Show what the watch sees*. Try *Check presence with AI*.
 
+**The container will not stop**
+Before 0.8, an open Overview kept SynoArgus waiting when the container was stopped. From 0.8 it stops within a few
+seconds. Add `init: true` and `stop_grace_period: 15s` to your `docker-compose.yml` (see the one in the repository).
+If a container is stuck anyway: `sudo docker rm -f synoargus` over SSH, then *Build* the project again.
+
 **Nothing happens when I press a button after an update**
 The browser may have kept old files. Reload the page; from 0.7 the files carry the version number and this is not needed.
 
 **Overview only shows still images**
-Live video could not be started. Open *Show raw data for troubleshooting*; if the address is empty or wrong, enter the
+Live video could not be started. Turn on raw data under Settings > Other > Overview and open *Show raw data for
+troubleshooting*; if the address is empty or wrong, enter the
 camera's own RTSP address under Cameras > Video stream for Overview.
 
 **Install as an app is greyed out**

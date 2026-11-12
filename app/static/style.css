@@ -194,8 +194,6 @@ pre.raw { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap:
 .ov-bar { position: relative; margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
 .ov-ctrl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
 .ov-ctrl .btn { padding: 7px 10px; min-width: 44px; font-variant-numeric: tabular-nums; }
-.ov-time { font-variant-numeric: tabular-nums; font-weight: 600; text-align: center; margin-top: 8px; }
-.ov-full-head .ov-time { margin-top: 0; }
 .ov-tl { position: relative; overflow-x: auto; overflow-y: hidden; height: 46px; margin-top: 10px; border-top: 1px solid var(--line); cursor: grab; scrollbar-width: thin; touch-action: pan-x; }
 .ov-track { position: relative; height: 100%; }
 .ov-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
@@ -215,3 +213,21 @@ pre.raw { white-space: pre-wrap; font-size: 12px; background: var(--bg); border:
   .ov-head h2 { width: 100%; }
   .ov-grid[data-rows="3"] .ov-tile, .ov-grid[data-rows="2"] .ov-tile { aspect-ratio: 4 / 3; }
 }
+
+details.more { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+details.more > summary { cursor: pointer; font-weight: 600; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 6px; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "▸"; transition: transform .15s; }
+details.more[open] > summary::before { transform: rotate(90deg); }
+
+.ov-time { font-variant-numeric: tabular-nums; display: block; margin: 8px auto 0; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; border-radius: 8px; }
+.ov-time:hover { background: var(--bg); }
+.ov-full-head .ov-time { margin: 0; cursor: default; }
+.ov-goto { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+.ov-goto input { width: auto; }
+.ov-badge { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; font-size: 12px; color: #fff; background: rgba(0,0,0,.6); padding: 3px 9px; border-radius: 6px; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.ov-zoom { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+.ov-full .ov-media { touch-action: none; overflow: hidden; }
+.ov-full .ov-media.zoomed { cursor: grab; }
+.ov-zoombtns { display: inline-flex; gap: 4px; }
+@media (max-width: 600px) { .ov-full-head { flex-wrap: wrap; } .ov-full-head .btn span { display: none; } .ov-full-head .ov-time { order: 9; width: 100%; font-size: 13px; } }

@@ -11,11 +11,134 @@ Object.assign(EN, {
   'Tryck på en kamera för helskärm med ljud. Dra tidslinjen för att spela upp inspelningar.': 'Tap a camera for full screen with sound. Drag the timeline to play recordings.',
   'Visa rådata för felsökning': 'Show raw data for troubleshooting', 'Sida {a} / {b}': 'Page {a} / {b}',
   'Lägg till en kamera under Inställningar > Kameror först.': 'Add a camera under Settings > Cameras first.',
+  '1 kamera': '1 camera', 'Bild från händelsen – ingen inspelning': 'Image from the event – no recording',
+  'Uppspelningen fastnade. Tryck ▶ för att försöka igen.': 'Playback got stuck. Press ▶ to try again.',
+  'Gå till': 'Go to', 'Avbryt': 'Cancel', 'Välj datum och tid': 'Choose date and time',
+  'Zooma in': 'Zoom in', 'Zooma ut': 'Zoom out', 'Återställ zoom': 'Reset zoom',
+  'Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.': 'Tap a camera for full screen. Drag the timeline to play recordings. Tap the date and time to choose a point in time.',
 });
 
-const LAYOUTS = { '1x2': [2, 1], '1x3': [3, 1], '2x2': [2, 2], '2x3': [3, 2] };   // rader × kolumner -> [kolumner, rader]
+const LAYOUTS = { '1x1': [1, 1], '1x2': [2, 1], '1x3': [3, 1], '2x2': [2, 2], '2x3': [3, 2] };   // rader × kolumner -> [kolumner, rader]
 const PX_PER_MIN = 8;          // tidslinjens skala
 const REC_CHUNK = 300;         // sekunder per inspelningsbit
+const STALL_S = 6;             // står videon still så länge laddas den om
+const EVENT_NEAR_S = 30;       // visa händelsens bild om inspelning saknas inom så här många sekunder
+
+/* ---------------------------------------------------------------- uppspelning av inspelningar (en per ruta) */
+class RecPlayer {
+  constructor(tile, cam, O) { this.tile = tile; this.cam = cam; this.O = O; this.video = tile.querySelector('video'); this.img = tile.querySelector('img'); this.gen = 0; }
+  msg(text) { const m = this.tile.querySelector('.ov-msg'); m.hidden = !text; m.textContent = text || ''; }
+  stop() {
+    this.gen++; clearInterval(this.watch); clearTimeout(this.wait);
+    const v = this.video; v.onended = v.onerror = null;
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { /* */ }
+  }
+  /* spelar från T; hittas ingen inspelning visas händelsens bild, och finns nästa inspelning snart hoppar vi dit */
+  async play(T, retry = 0) {
+    const gen = ++this.gen, v = this.video, enc = encodeURIComponent(this.cam);
+    clearInterval(this.watch); clearTimeout(this.wait);
+    let r;
+    try { r = await api(`/api/overview/recording?cam=${enc}&t=${T}&check=1`); } catch (e) { this.msg(e.message); return; }
+    if (gen !== this.gen || !this.O.alive) return;
+    if (!r.found) {
+      v.hidden = true; v.removeAttribute('src'); delete v.dataset.t0; this.T = T;
+      const ev = this.O.evs.filter(e => e.camera === this.cam && e.image && Math.abs(e.ts - T) <= EVENT_NEAR_S)
+        .sort((a, b) => Math.abs(a.ts - T) - Math.abs(b.ts - T))[0];
+      if (ev) { this.img.src = `/captures/${encodeURIComponent(ev.image).replace(/%2F/g, '/')}`; this.img.hidden = false; this.msg(''); this.badge(t('Bild från händelsen – ingen inspelning')); }
+      else { this.img.hidden = true; this.badge(''); this.msg(r.detail || t('Ingen inspelning')); }
+      if (r.next && r.next - T <= 60 && this.O.playing)        // nästa inspelning börjar snart: fortsätt där
+        this.wait = setTimeout(() => { if (gen === this.gen) this.play(r.next); }, Math.max(0, (r.next - T) * 1000));
+      return;
+    }
+    this.img.hidden = true; this.badge(''); this.msg(''); v.hidden = false;
+    this.T = T; this.stop_ = r.stop; this.ongoing = r.ongoing; this.next = r.next;
+    v.dataset.t0 = T;
+    v.onended = () => { if (gen === this.gen) this.continue(); };
+    v.onerror = () => { if (gen === this.gen) this.stuck(); };
+    v.src = `/api/overview/recording?cam=${enc}&t=${T}&length=${REC_CHUNK}`;
+    if (this.O.playing) v.play().catch(() => { /* */ });
+    // vakt: står videon still trots att den ska spela laddas den om från samma ställe
+    let last = -1, since = Date.now();
+    this.retry = retry;
+    this.watch = setInterval(() => {
+      if (gen !== this.gen) return clearInterval(this.watch);
+      if (!this.O.playing || v.ended) { since = Date.now(); last = v.currentTime; return; }
+      if (v.currentTime !== last) { last = v.currentTime; since = Date.now(); return; }
+      if (Date.now() - since > STALL_S * 1000) this.stuck();
+    }, 1000);
+  }
+  /* biten är slut: fortsätt där den faktiskt slutade, eller på nästa inspelning om den här är slut */
+  continue() {
+    const v = this.video, T0 = Number(v.dataset.t0), played = v.currentTime || 0, at = T0 + played;
+    const gen = this.gen, again = (t_, n) => { this.wait = setTimeout(() => { if (gen === this.gen) this.play(t_, n); }, 4000); };
+    if (played < 1) {                                // inget nytt (inspelningen skrivs fortfarande): vänta och försök igen
+      if ((this.retry || 0) >= 3) return this.stuckMsg();
+      return again(T0, (this.retry || 0) + 1);
+    }
+    const r1 = t_ => Math.round(t_ * 10) / 10;
+    if (at < this.stop_ - 1) return this.play(r1(at));          // bara biten tog slut
+    if (this.next) return this.play(this.next);                  // inspelningen är slut: nästa
+    if (this.ongoing) return again(r1(at), 0);                   // pågår fortfarande: vänta på mer
+    this.play(r1(at));                                           // visar "Ingen inspelning" / händelsens bild
+  }
+  stuck() {
+    const v = this.video, at = Number(v.dataset.t0 || this.T) + (v.currentTime || 0);
+    if ((this.retry || 0) >= 3) return this.stuckMsg();
+    this.play(Math.round(at * 10) / 10, (this.retry || 0) + 1);
+  }
+  stuckMsg() { clearInterval(this.watch); this.isStuck = true; this.msg(t('Uppspelningen fastnade. Tryck ▶ för att försöka igen.')); }
+  resume() {
+    const v = this.video;
+    if (this.isStuck || v.hidden || v.readyState < 2 || v.error) { this.isStuck = false; return this.play(Number(v.dataset.t0 || this.T) + (v.currentTime || 0)); }
+    v.play().catch(() => { /* */ });
+  }
+  badge(text) {
+    let b = this.tile.querySelector('.ov-badge');
+    if (!b) { b = document.createElement('div'); b.className = 'ov-badge'; this.tile.querySelector('.ov-media').appendChild(b); }
+    b.hidden = !text; b.textContent = text || '';
+  }
+}
+
+/* ---------------------------------------------------------------- zoom i helskärm (nyp, dra, dubbeltryck, knappar) */
+class Zoom {
+  constructor(area, target) {
+    this.area = area; this.el = target; this.s = 1; this.x = 0; this.y = 0; this.pts = new Map(); this.lastTap = 0;
+    area.addEventListener('pointerdown', e => this.down(e));
+    area.addEventListener('pointermove', e => this.move(e));
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => area.addEventListener(n, e => this.up(e)));
+    area.addEventListener('wheel', e => { e.preventDefault(); const p = this.local(e); this.zoomAt(this.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), p.x, p.y); }, { passive: false });
+  }
+  local(e) { const r = this.area.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  apply() {
+    const w = this.area.clientWidth, h = this.area.clientHeight;
+    this.s = Math.min(6, Math.max(1, this.s));
+    this.x = Math.min(0, Math.max(w * (1 - this.s), this.x)); this.y = Math.min(0, Math.max(h * (1 - this.s), this.y));
+    this.el.style.transform = this.s === 1 ? '' : `translate(${this.x}px, ${this.y}px) scale(${this.s})`;
+    this.area.classList.toggle('zoomed', this.s > 1);
+  }
+  zoomAt(s, cx, cy) { const k = Math.min(6, Math.max(1, s)) / this.s; this.x = cx - (cx - this.x) * k; this.y = cy - (cy - this.y) * k; this.s *= k; this.apply(); }
+  step(f) { this.zoomAt(this.s * f, this.area.clientWidth / 2, this.area.clientHeight / 2); }
+  reset() { this.s = 1; this.x = this.y = 0; this.apply(); }
+  down(e) {
+    this.area.setPointerCapture?.(e.pointerId);
+    this.pts.set(e.pointerId, this.local(e));
+    if (this.pts.size === 2) { const [a, b] = [...this.pts.values()]; this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: this.s }; }
+    if (this.pts.size === 1) {
+      const now = Date.now(), p = this.local(e);
+      if (now - this.lastTap < 300) { this.s > 1 ? this.reset() : this.zoomAt(2.5, p.x, p.y); this.lastTap = 0; } else this.lastTap = now;
+    }
+  }
+  move(e) {
+    if (!this.pts.has(e.pointerId)) return;
+    const prev = this.pts.get(e.pointerId), p = this.local(e);
+    this.pts.set(e.pointerId, p);
+    if (this.pts.size === 2 && this.pinch) {
+      const [a, b] = [...this.pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      this.zoomAt(this.pinch.s * d / Math.max(1, this.pinch.d), (a.x + b.x) / 2, (a.y + b.y) / 2);
+    } else if (this.pts.size === 1 && this.s > 1) { this.x += p.x - prev.x; this.y += p.y - prev.y; this.apply(); }
+  }
+  up(e) { this.pts.delete(e.pointerId); if (this.pts.size < 2) this.pinch = null; }
+}
 
 /* ---------------------------------------------------------------- liveström (fMP4 via WebSocket, go2rtc-protokollet) */
 class LivePlayer {
@@ -102,7 +225,7 @@ async function renderOverview() {
   main.innerHTML = `
   <div class="ov">
     <div class="row ov-head"><h2 style="margin:0">${t('Översikt')}</h2>
-      <div class="chips" id="ovLayouts">${Object.keys(LAYOUTS).map(k => `<button class="chip ${k === layout ? 'on' : ''}" data-l="${k}" title="${k.replace('x', ' × ')}">${layoutIcon(k)}<span>${k.replace('x', ' × ')}</span></button>`).join('')}</div>
+      <div class="chips" id="ovLayouts">${Object.keys(LAYOUTS).map(k => `<button class="chip ${k === layout ? 'on' : ''}" data-l="${k}" title="${k === '1x1' ? t('1 kamera') : k.replace('x', ' × ')}">${layoutIcon(k)}<span>${k === '1x1' ? t('1 kamera') : k.replace('x', ' × ')}</span></button>`).join('')}</div>
       <div class="row" id="ovPager"></div></div>
     ${canLive ? '' : `<p class="warnbox">⚠ ${esc(t('Livevideo är inte tillgänglig ({e}). Kamerorna visas som bilder varannan sekund.', { e: !LivePlayer.supported() ? 'MSE' : t(info.live.error || 'go2rtc') }))}</p>`}
     <div class="ov-grid" id="ovGrid"></div>
@@ -115,10 +238,11 @@ async function renderOverview() {
         <button class="btn primary" data-c="live" id="ovLive">LIVE</button>
         <button class="btn" data-c="next" title="${t('Nästa händelse')}">!&gt;</button>
       </div>
-      <div class="ov-time" id="ovTime">&nbsp;</div>
+      <button type="button" class="ov-time" id="ovTime" title="${t('Välj datum och tid')}">&nbsp;</button>
+      <form class="ov-goto" id="ovGoto" hidden><input type="datetime-local" step="1" id="ovGotoIn"><button class="btn primary">${t('Gå till')}</button><button type="button" class="btn" id="ovGotoX">${t('Avbryt')}</button></form>
       <div class="ov-tlwrap"><div class="ov-tl" id="ovTl"><div class="ov-track" id="ovTrack"></div></div><div class="ov-cursor"></div></div>
-      <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm med ljud. Dra tidslinjen för att spela upp inspelningar.')}
-        <a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a></p><pre class="raw" id="ovRawBox" hidden></pre>
+      <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.')}
+        ${S.cfg?.overview?.debug ? `<a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a>` : ''}</p><pre class="raw" id="ovRawBox" hidden></pre>
     </div>
   </div>`;
 
@@ -126,6 +250,7 @@ async function renderOverview() {
   const slots = () => LAYOUTS[layout][0] * LAYOUTS[layout][1];
   const pages = () => Math.max(1, Math.ceil(cams.length / slots()));
   function stopTiles() { O.players.forEach(p => p.stop && p.stop()); O.players = []; O.timers.forEach(clearInterval); O.timers = []; }
+  const recPlayers = () => O.players.filter(p => p instanceof RecPlayer);
   function drawGrid() {
     stopTiles();
     let [cols, rows] = LAYOUTS[layout];
@@ -157,20 +282,7 @@ async function renderOverview() {
       if (!canLive) return snapshots(tile, cam);
       const p = new LivePlayer(video, cam, () => { if (O.alive && O.mode === 'live') snapshots(tile, cam); });
       O.players.push(p); p.start();
-    } else playRecording(tile, cam, O.T);
-  }
-  async function playRecording(tile, cam, T) {
-    const video = tile.querySelector('video'), enc = encodeURIComponent(cam);
-    try {
-      const r = await api(`/api/overview/recording?cam=${enc}&t=${T}&check=1`);
-      if (!O.alive || O.T !== T) return;
-      if (!r.found) { video.hidden = true; msg(tile, r.detail || t('Ingen inspelning')); return; }
-    } catch (e) { msg(tile, e.message); return; }
-    video.hidden = false; msg(tile, '');
-    video.src = `/api/overview/recording?cam=${enc}&t=${T}&length=${REC_CHUNK}`;
-    video.dataset.t0 = T;
-    video.onended = () => { if (O.mode === 'rec' && O.T === T) { /* nästa bit */ playRecording(tile, cam, T + REC_CHUNK); } };
-    if (O.playing) video.play().catch(() => { /* */ });
+    } else { const p = new RecPlayer(tile, cam, O); O.players.push(p); p.play(O.T); }
   }
 
   // ---------------------------------------------------------------- tid och kontroller
@@ -182,9 +294,11 @@ async function renderOverview() {
   function current() {
     if (O.mode === 'live') return O.frozenAt || now();
     const v = $$('.ov-tile video').find(x => !x.hidden && x.dataset.t0 && x.readyState > 0);
-    return v ? Number(v.dataset.t0) + v.currentTime : O.T;
+    if (v) return Number(v.dataset.t0) + v.currentTime;
+    const p = recPlayers().find(x => x.T); return p ? p.T : O.T;
   }
   function seek(T, keepPlaying = true) {
+    if (!O.alive || !$('#ovLive')) return;
     if (T >= now() - 5) return goLive();
     O.mode = 'rec'; O.T = Math.round(T); O.playing = keepPlaying; O.follow = false; O.frozenAt = null;
     $('#ovLive').classList.remove('primary'); $('#ovPause').textContent = O.playing ? '⏸' : '▶';
@@ -193,6 +307,7 @@ async function renderOverview() {
     scrollTo(O.T);
   }
   function goLive() {
+    if (!O.alive || !$('#ovLive')) return;
     O.mode = 'live'; O.T = null; O.follow = true; O.playing = true; O.frozenAt = null;
     $('#ovLive').classList.add('primary'); $('#ovPause').textContent = '⏸';
     drawGrid(); scrollTo(now());
@@ -211,7 +326,7 @@ async function renderOverview() {
         return;
       }
       O.playing = !O.playing; $('#ovPause').textContent = O.playing ? '⏸' : '▶';
-      $$('.ov-tile video', main).forEach(v => { if (O.playing) v.play().catch(() => {}); else v.pause(); });
+      recPlayers().forEach(p => { if (O.playing) p.resume(); else p.video.pause(); });
       return;
     }
     seek(current() + Number(c));
@@ -244,7 +359,27 @@ async function renderOverview() {
     const d = Number(e.target.dataset.p || 0); if (!d) return;
     page = (page + d + pages()) % pages(); O.mode === 'live' ? drawGrid() : seek(current(), O.playing);
   });
-  $('#ovRaw').onclick = async e => {
+  // tryck på datum och tid: välj en tidpunkt
+  const pad = n => String(n).padStart(2, '0');
+  const localInput = ts => { const d = new Date(ts * 1000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  $('#ovTime').onclick = () => {
+    const f = $('#ovGoto'), inp = $('#ovGotoIn');
+    inp.max = localInput(now()); inp.value = localInput(current());
+    f.hidden = false; $('#ovTime').hidden = true; inp.focus();
+    try { inp.showPicker && inp.showPicker(); } catch (e) { /* inte alla webbläsare */ }
+  };
+  const closeGoto = () => { $('#ovGoto').hidden = true; $('#ovTime').hidden = false; };
+  $('#ovGotoX').onclick = closeGoto;
+  $('#ovGoto').onsubmit = async e => {
+    e.preventDefault();
+    const ts = new Date($('#ovGotoIn').value).getTime() / 1000;
+    closeGoto();
+    if (!isFinite(ts)) return;
+    if (ts >= now() - 5) return goLive();
+    while (O.from && ts < O.from + 600 && O.alive) { const before = O.from; await loadEarlier(); if (O.from === before) break; }
+    seek(ts);
+  };
+  if ($('#ovRaw')) $('#ovRaw').onclick = async e => {
     e.preventDefault(); const box = $('#ovRawBox'); box.hidden = !box.hidden; if (box.hidden) return;
     box.textContent = t('Laddar…');
     try { box.textContent = JSON.stringify(await api('/api/overview/raw'), null, 2); } catch (err) { box.textContent = err.message; }
@@ -261,15 +396,20 @@ async function renderOverview() {
     const ov = document.createElement('div');
     ov.className = 'ov-full';
     ov.innerHTML = `<div class="ov-full-head"><b>${esc(cam)}</b><span class="ov-time" id="ovFullTime"></span>
-      <button class="btn" id="ovSound">🔊 ${t('Ljud')}</button><button class="btn" id="ovClose">✕ ${t('Stäng')}</button></div>
-      <div class="ov-tile" data-cam="${esc(cam)}"><div class="ov-media"><video playsinline controls></video><img alt="" hidden><div class="ov-msg" hidden></div></div></div>`;
+      <span class="ov-zoombtns"><button class="btn" id="ovZout" title="${t('Zooma ut')}">−</button><button class="btn" id="ovZin" title="${t('Zooma in')}">+</button><button class="btn" id="ovZ0" title="${t('Återställ zoom')}">⟲</button></span>
+      <button class="btn" id="ovSound">🔊 <span>${t('Ljud')}</span></button><button class="btn" id="ovClose">✕ <span>${t('Stäng')}</span></button></div>
+      <div class="ov-tile" data-cam="${esc(cam)}"><div class="ov-media"><div class="ov-zoom"><video playsinline></video><img alt="" hidden></div><div class="ov-msg" hidden></div></div></div>`;
     document.body.appendChild(ov);
     const tile = ov.querySelector('.ov-tile'), video = tile.querySelector('video');
-    if (T) { O.T = T; playRecording(tile, cam, T); video.muted = false; } else startTile(tile, cam, false);
-    video.muted = false;            // trycket på kameran räknas som tillåtelse att spela ljud
-    video.play().catch(() => { video.muted = true; video.play().catch(() => {}); });
-    $('#ovSound').onclick = () => { video.muted = !video.muted; $('#ovSound').classList.toggle('primary', !video.muted); if (!video.muted) video.play().catch(() => {}); };
-    $('#ovSound').classList.toggle('primary', !video.muted);
+    const zoom = new Zoom(tile.querySelector('.ov-media'), tile.querySelector('.ov-zoom'));
+    $('#ovZin').onclick = () => zoom.step(1.5); $('#ovZout').onclick = () => zoom.step(1 / 1.5); $('#ovZ0').onclick = () => zoom.reset();
+    const sound = S.cfg?.overview?.sound !== false;
+    if (T) { O.T = T; const p = new RecPlayer(tile, cam, O); O.players.push(p); p.play(T); } else startTile(tile, cam, !sound);
+    video.muted = !sound;            // trycket på kameran räknas som tillåtelse att spela ljud
+    const sb = ov.querySelector('#ovSound');
+    video.play().catch(() => { if (!ov.isConnected) return; video.muted = true; sb.classList.remove('primary'); video.play().catch(() => {}); });
+    sb.onclick = () => { video.muted = !video.muted; sb.classList.toggle('primary', !video.muted); if (!video.muted) video.play().catch(() => {}); };
+    sb.classList.toggle('primary', !video.muted);
     const close = () => {
       stopTiles(); try { video.pause(); video.removeAttribute('src'); video.load(); } catch (err) { /* */ }
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -334,7 +474,7 @@ async function renderOverview() {
     $('#ovTime').textContent = fmt(ts);
     if (!userScroll) return;
     clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => { userScroll = false; seek(tOf(tl.scrollLeft + tl.clientWidth / 2)); }, 500);
+    scrollTimer = setTimeout(() => { userScroll = false; if (O.alive) seek(tOf(tl.scrollLeft + tl.clientWidth / 2)); }, 500);
   });
 
   // ---------------------------------------------------------------- klocka

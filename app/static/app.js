@@ -6,7 +6,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const main = $('#main');
-let S = { state: null, cfg: null, types: null, models: [], triggerBase: '', tab: 'events', sub: 'cameras', cam: null, lang: 'sv', update: null, dirty: null, prio: 0 };
+let S = { state: null, cfg: null, types: null, models: [], triggerBase: '', tab: 'overview', sub: 'cameras', cam: null, lang: 'sv', update: null, dirty: null, prio: 0 };
 try { const v = localStorage.getItem('synoargus.sub'); if (['cameras', 'notifiers', 'watch', 'modes', 'other'].includes(v)) S.sub = v; } catch (e) { /* */ }
 const stoppers = new Set();  // livebild, rörelsemätare m.m. som ska stoppas när man byter vy
 function stopAll() { stoppers.forEach(f => { try { f(); } catch (e) { /* */ } }); stoppers.clear(); }
@@ -23,6 +23,9 @@ const EN = {
   'Utan event skickas den senaste händelsen som väntar. Med &text=… ersätts texten. Med en reservtid skickas den ändå om ingen har anropat.': 'Without event the latest waiting event is sent. With &text=… the text is replaced. With a fallback time it is sent anyway if nobody has called.',
   'Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.': 'No filters: this notification receives every alarm from every camera in every mode.',
   'väntar på anrop': 'waiting for a call', 'skickad på begäran': 'sent on request',
+  'Ytterligare inställningar': 'More settings', 'Fordon': 'Vehicles', 'Djur': 'Animals', 'Väskor och bagage': 'Bags and luggage',
+  'Ljud på direkt i helskärm': 'Sound on in full screen', 'Visa rådata för felsökning i Översikt': 'Show raw data for troubleshooting in Overview',
+  'Webbläsare kan kräva ett tryck innan ljud spelas.': 'Browsers may require a tap before sound plays.',
   'Händelser': 'Events', 'Kameror': 'Cameras', 'Notifiering': 'Notifications', 'Inställningar': 'Settings', 'Status': 'Status', 'Guide': 'Guide', 'Övrigt': 'Other',
   'Du har ändringar som inte är sparade. Lämna ändå?': 'You have unsaved changes. Leave anyway?',
   'Kalibrerar – larm fördröjs {s} s': 'Calibrating – alarms delayed {s} s',
@@ -192,6 +195,20 @@ const t = (s, v) => { let r = (S.lang === 'en' && EN[s] !== undefined) ? EN[s] :
 const WEBHOOKHELP_SV = 'Värdena kodas automatiskt för adresser (mellanslag, å/ä/ö). Exempel för Homey: <code>https://webhook.homey.app/&lt;homey-id&gt;/synoargus?tag=%kamera%;%vad%</code> – i Homey-flödet får du då <i>OutDoor2-Backyard;Person</i> i taggen. Med GET och utan platshållare skickas <code>camera</code>, <code>types</code> och <code>message</code> som parametrar. Med POST/PUT skickas alltid JSON.';
 
 const tname = l => S.lang === 'en' ? (l.charAt(0).toUpperCase() + l.slice(1)) : ((S.types?.names?.[l]) || l);
+/* <option>-lista med typer: grupperna först (Fordon, Djur …), resten under Övrigt, i bokstavsordning på valt språk */
+function typeOptions(list) {
+  const byName = (a, b) => tname(a).localeCompare(tname(b), S.lang);
+  const left = new Set(list), out = [];
+  for (const [name, types] of S.types.groups || []) {
+    const g = types.filter(x => left.has(x)).sort(byName);
+    g.forEach(x => left.delete(x));
+    if (g.length) out.push(`<optgroup label="${esc(t(name))}">${g.map(x => `<option value="${x}">${esc(tname(x))}</option>`).join('')}</optgroup>`);
+  }
+  const rest = [...left].sort(byName);
+  if (rest.length) out.push(`<optgroup label="${esc(t('Övrigt'))}">${rest.map(x => `<option value="${x}">${esc(tname(x))}</option>`).join('')}</optgroup>`);
+  return out.join('');
+}
+function moreOpen() { try { return localStorage.getItem('synoargus.camMore') === '1'; } catch (e) { return false; } }
 const fmtTime = ts => new Date(ts * 1000).toLocaleString(S.lang === 'en' ? 'en-GB' : 'sv-SE', { dateStyle: 'short', timeStyle: 'medium' });
 const fmtClock = ts => new Date(ts * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE');
 const num = v => (v === '' || v === null || v === undefined) ? null : Number(v);
@@ -531,9 +548,10 @@ function renderCamEditor(cam) {
     <div class="chips" id="cModes" style="margin-bottom:12px">${modeList().map(m => `<button class="chip ${(cam.modes || []).includes(m.id) ? 'on' : ''}" data-m="${esc(m.id)}">${esc(m.name)}</button>`).join('')}</div>
     <div class="muted small" style="margin-bottom:4px">${t('Typer')}</div>
     <div class="chips" id="cTypes">${common.map(x => `<button class="chip ${cam.types.includes(x) ? 'on' : ''}" data-t="${x}">${esc(tname(x))}</button>`).join('')}</div>
-    <div class="row" style="margin-top:8px"><select id="cOther" style="width:auto"><option value="">${t('Lägg till annan typ…')}</option>${others.map(x => `<option value="${x}">${esc(tname(x))}</option>`).join('')}</select>
+    <div class="row" style="margin-top:8px"><select id="cOther" style="width:auto"><option value="">${t('Lägg till annan typ…')}</option>${typeOptions(others)}</select>
       <span id="cOtherList"></span></div>
-    <div class="grid" style="margin-top:14px">
+    <details class="more" id="cMore" ${moreOpen() ? 'open' : ''}><summary>${t('Ytterligare inställningar')}</summary>
+    <div class="grid" style="margin-top:10px">
       <label class="f">${t('Säkerhet minst (%)')}<input type="number" id="cThr" min="10" max="95" value="${cam.threshold ?? ''}" placeholder="${d.threshold}"></label>
       <label class="f">${t('Minsta bredd (px)')}<input type="number" id="cMinW" min="0" value="${cam.min_width ?? ''}" placeholder="${d.min_width}"></label>
       <label class="f">${t('Minsta höjd (px)')}<input type="number" id="cMinH" min="0" value="${cam.min_height ?? ''}" placeholder="${d.min_height}"></label>
@@ -543,7 +561,7 @@ function renderCamEditor(cam) {
       <label class="f">${t('Vänta innan första bild (ms)')}<input type="number" id="cWait" min="0" step="100" value="${cam.wait_ms || 0}"></label>
       <label class="f" style="grid-column:1/-1">${t('Videoström för Översikt (valfri)')}<input type="text" id="cStream" autocomplete="off" spellcheck="false" value="${esc(cam.stream_url || '')}" placeholder="${t('Tom = strömmen från Surveillance Station')}"></label>
       <p class="hint-box">${t('Behövs bara om Översikt inte visar kameran. Till exempel rtsp://användare:lösenord@192.168.1.20:554/stream1. Adressen tas bort ur exporten utan hemligheter.')}</p>
-    </div>
+    </div></details>
   </div>
   <div class="panel">
     <div class="row" style="justify-content:space-between"><h3>${t('Uteslutningszoner')}</h3><button class="btn" id="loadSnap">${t('Hämta bild')}</button></div>
@@ -588,6 +606,7 @@ function renderCamEditor(cam) {
   $('#cTypes').onclick = e => { const x = e.target.dataset.t; if (!x) return; toggleType(x); e.target.classList.toggle('on'); };
   $('#cOther').onchange = e => { const x = e.target.value; if (x && !cam.types.includes(x)) { cam.types.push(x); drawOther(); } e.target.value = ''; };
   $('#cOtherList').onclick = e => { const x = e.target.dataset.t; if (x) { toggleType(x); drawOther(); } };
+  $('#cMore').addEventListener('toggle', e => { try { localStorage.setItem('synoargus.camMore', e.target.open ? '1' : '0'); } catch (err) { /* */ } });
 
   cam.modes = cam.modes || [];
   $('#cModes').onclick = e => { const m = e.target.dataset.m; if (!m) return; cam.modes = cam.modes.includes(m) ? cam.modes.filter(x => x !== m) : [...cam.modes, m]; e.target.classList.toggle('on'); };
@@ -1174,6 +1193,11 @@ function renderSettings() {
     <label class="f">${t('Tid mellan bilder (ms)')}<input type="number" name="def.snapshot_interval_ms" min="100" step="100" value="${c.defaults.snapshot_interval_ms}"></label>
   </div></div>
 
+  <div class="panel"><h3>${t('Översikt')}</h3><div class="grid">
+    <label class="check"><input type="checkbox" name="ov.sound" ${c.overview?.sound !== false ? 'checked' : ''}> ${t('Ljud på direkt i helskärm')}</label>
+    <label class="check"><input type="checkbox" name="ov.debug" ${c.overview?.debug ? 'checked' : ''}> ${t('Visa rådata för felsökning i Översikt')}</label>
+  </div><p class="small muted" style="margin:8px 0 0">${t('Webbläsare kan kräva ett tryck innan ljud spelas.')}</p></div>
+
   <div class="panel"><h3>${t('Lagring')}</h3><div class="grid">
     <label class="f">${t('Spara bilder i (dagar)')}<input type="number" name="sto.days_to_keep" min="0" value="${c.storage.days_to_keep}"><span class="hint">${t('0 = spara för alltid')}</span></label>
     <label class="f">${t('Högst (MB)')}<input type="number" name="sto.max_mb" min="0" step="100" value="${c.storage.max_mb ?? 2000}"><span class="hint">${t('0 = ingen gräns. Det som inträffar först gäller – de äldsta händelserna tas bort.')}</span></label>
@@ -1267,6 +1291,7 @@ function renderSettings() {
       detector: { model: val('det.model'), device: val('det.device') },
       defaults: Object.fromEntries(['threshold', 'min_width', 'min_height', 'cooldown_s', 'delay_s', 'max_snapshots', 'snapshot_interval_ms'].map(k => [k, Number(val('def.' + k))])),
       storage: { days_to_keep: Number(val('sto.days_to_keep')), max_mb: Number(val('sto.max_mb') || 0), save_empty: chk('sto.save_empty') },
+      overview: { sound: chk('ov.sound'), debug: chk('ov.debug') },
       public_url: val('public_url').trim(),
       auth: { dsm_login: chk('auth.dsm_login'), allowed_users: val('auth.allowed_users'),
         sso: { enabled: chk('sso.enabled'), issuer, client_id: val('sso.client_id').trim(), client_secret: val('sso.client_secret'), redirect_url: val('sso.redirect_url').trim() } },

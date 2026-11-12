@@ -4,6 +4,8 @@ services:
     pull_policy: always            # "Build" in Container Manager pulls the newest version
     container_name: synoargus
     restart: unless-stopped
+    init: true                     # stops cleanly (signals reach SynoArgus)
+    stop_grace_period: 15s
     ports:
       - "8686:8686"
     volumes:

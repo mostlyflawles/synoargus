@@ -21,8 +21,8 @@ assert S.mask("go2rtc: dial rtsp://a:b@h/x failed") == "go2rtc: dial rtsp://***@
 assert S._with_credentials("rtsp://10.0.0.2:554/x", "svc", "p@ss") == "rtsp://svc:p%40ss@10.0.0.2:554/x"
 assert S._with_credentials("rtsp://a:b@10.0.0.2/x", "svc", "p") == "rtsp://a:b@10.0.0.2/x"
 assert S.stream_name({"name": "Yard", "ss_id": 5}) == "cam5" and S.stream_name({"name": "A b", "ss_id": None}) == "cam_A_b"
-assert S.mask('cameraId=1&StmKey=\\"3578496afb6f409b\\"') == 'cameraId=1&StmKey=\\"***\\"'
-assert S.mask("rtsp.cgi?Sms=1.unicast&StmKey=3578496afb6f409b") == "rtsp.cgi?Sms=1.unicast&StmKey=***"
+assert S.mask('cameraId=1&StmKey=\\"0123456789abcdef\\"') == 'cameraId=1&StmKey=\\"***\\"'
+assert S.mask("rtsp.cgi?Sms=1.unicast&StmKey=0123456789abcdef") == "rtsp.cgi?Sms=1.unicast&StmKey=***"
 print("A mask OK")
 
 # ---- recordings without start/stop (only file names), as some Surveillance Station versions answer
@@ -110,7 +110,50 @@ gap = run(main.overview_recording(R, cam="Yard", t=now - 2000, length=120, check
 assert gap["found"] is False and gap["next"] == now - 1200, gap
 gap = run(main.overview_recording(R, cam="Yard", t=now - 2000, length=120, check=0))
 assert gap.status_code == 404
+assert tl["events"][-1]["image"]
+nx = run(main.overview_recording(R, cam="Yard", t=now - 3500, length=120, check=1))
+assert nx["found"] and nx["next"] == now - 1200 and nx["ongoing"] is False, nx
 print("D timeline OK")
+
+# ---- playback log in the raw data, and streaming the recording
+class FakeResp:
+    headers = {"content-type": "video/mp4"}
+    async def aiter_bytes(self):
+        yield b"a" * 1000; yield b"b" * 500
+    async def aclose(self): pass
+async def fake_open(rec_id, off, play): return FakeResp()
+main.ss.open_recording = fake_open
+async def stream():
+    resp = await main.overview_recording(R, cam="Yard", t=now - 1000, length=120, check=0)
+    return b"".join([c async for c in resp.body_iterator]) if hasattr(resp, "body_iterator") else b""
+data = run(stream())
+pb = main.PLAYBACKS[-1]
+assert pb["recording"] == 12 and pb["camera"] == "Yard" and (pb["status"] == "done" or not data), pb
+raw = run(main.overview_raw(R))
+assert raw["playbacks"][0]["recording"] == 12 and "recordings_parsed" in raw
+print("D2 playback log OK")
+
+# ---- Overview settings: validated, saved, exported
+run(main.put_settings(R, {"overview": {"sound": 0, "debug": "yes", "junk": 1}}))
+assert config.get("overview") == {"sound": False, "debug": True}, config.get("overview")
+assert json.loads(run(main.export_settings(R, secrets=0)).body)["overview"] == {"sound": False, "debug": True}
+
+# ---- all 80 types have Swedish names, groups only contain known types
+from app.config import TYPE_NAMES_SV, TYPE_GROUPS
+from app.detector import COCO
+assert all(c in TYPE_NAMES_SV for c in COCO) and all(x in COCO for _, g in TYPE_GROUPS for x in g)
+assert run(main.get_config(R))["types"]["groups"] == TYPE_GROUPS
+
+# ---- shutdown closes open live streams and go2rtc
+class FakeWS:
+    closed = None
+    async def close(self, code=1000): FakeWS.closed = code
+stopped = []
+async def fake_stop(): stopped.append(1)
+main.LIVE_SOCKETS.add(FakeWS()); main.streams.stop = fake_stop
+run(main.shutdown())
+assert FakeWS.closed == 1001 and stopped and main.SHUTTING_DOWN
+print("F settings, types, shutdown OK")
 
 # ---- request language: the same text in the browser's language, the server keeps its own
 tok = i18n.request_lang.set("en")

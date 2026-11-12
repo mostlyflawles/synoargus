@@ -16,8 +16,9 @@ with the picture.
 - Notifications: **Pushbullet, Telegram, ntfy, email, webhook, MQTT** – with placeholders in texts and URLs
 - **Watch** (experimental): keeps an eye on a zone – arrival, activity stops, someone leaves, someone else enters or
   lingers – based on motion, so it also works in the dark, optionally with AI presence; start and stop it with a webhook
-- **Overview** (experimental): all cameras live in a grid (1×2, 1×3, 2×2, 2×3), full screen with sound, and a timeline
-  of Surveillance Station recordings to scroll back in time (live video via the bundled go2rtc)
+- **Overview** (experimental): all cameras live in a grid (1 camera, 1×2, 1×3, 2×2, 2×3), full screen with sound and
+  pinch zoom, and a timeline of Surveillance Station recordings to scroll back in time or jump to a chosen date and time
+  (live video via the bundled go2rtc)
 - Notifications can wait until **another system asks for them** (`/api/notify`), with an optional fallback time
 - Storage limit by age **and** size, with the space used shown
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,

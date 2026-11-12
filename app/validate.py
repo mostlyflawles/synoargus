@@ -133,6 +133,11 @@ def settings(new, model_names=None):
         if "save_empty" in s:
             out["save_empty"] = bool(s["save_empty"])
         new["storage"] = out
+    if "overview" in new:
+        s = new["overview"]
+        if not isinstance(s, dict):
+            raise Invalid("overview")
+        new["overview"] = {k: bool(s[k]) for k in ("sound", "debug") if k in s}
     if "synology" in new:
         s = new["synology"]
         if not isinstance(s, dict):

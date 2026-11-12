@@ -18,6 +18,7 @@ window.GUIDE = {
 <ul>
   <li><b>Aktiv i läge</b> – i vilka lägen kameran är aktiv (inga valda = alla). Se <a href="#g-modes">Lägen</a>.</li>
   <li><b>Vad ska registreras som händelse?</b> – vilka typer som ger en händelse och en notis. Fler typer finns under <i>Lägg till annan typ…</i></li>
+  <li><b>Ytterligare inställningar</b> – fälten nedan ligger under en knapp som är stängd från början.</li>
   <li><b>Säkerhet minst (%)</b> – hur säker AI:n måste vara. Börja runt 50–60. Tomt fält = standardvärdet under Övrigt.</li>
   <li><b>Minsta bredd/höjd</b> – ignorera små träffar långt bort (i pixlar i bilden).</li>
   <li><b>Tyst efter larm</b> – inga nya larm under X sekunder efter ett larm.</li>
@@ -67,8 +68,11 @@ window.GUIDE = {
       ['overview', 'Översikt (experimentell)', `
 <p>Fliken <b>Översikt</b> visar alla kameror samtidigt, ungefär som Multi View i Surveillance Station.</p>
 <ul>
-  <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor.</li>
-  <li><b>Tryck på en kamera</b> för helskärm med ljud. <i>Ljud</i> slår av och på.</li>
+  <li>Översikt är startsidan när du öppnar SynoArgus.</li>
+  <li><b>Layout</b> 1 kamera, 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor (‹ ›).</li>
+  <li><b>Tryck på en kamera</b> för helskärm. Om ljudet ska vara på direkt ställer du in under <i>Övrigt &gt; Översikt</i>; <i>Ljud</i> slår av och på. <b>Zooma</b> genom att nypa med två fingrar, med + och − eller genom att dubbeltrycka; dra för att flytta bilden och ⟲ återställer.</li>
+  <li><b>Tryck på datum och tid</b> under knapparna för att välja en tidpunkt att spela upp från.</li>
+  <li>Saknas inspelning visas SynoArgus egen bild från händelsen, med texten <i>Bild från händelsen – ingen inspelning</i>.</li>
   <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. Knapparna: <b>&lt;!</b> föregående händelse (i live: den senaste), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> och <b>!&gt;</b> nästa händelse. En händelse spelas från 3 s före. Paus i live fryser bilden; ▶ går tillbaka till live. Datum och tid för det som visas står under knapparna.</li>
 </ul>
 <h4>Bra att veta</h4>
@@ -80,7 +84,8 @@ window.GUIDE = {
   <li>Tidslinjen visar allt som Surveillance Station har spelat in, även när SynoArgus inte har larmat. Saknar NAS:en start- och sluttid i svaret läses tiden ur filnamnet.</li>
   <li>Inspelningar kräver att SynoArgus-kontot får se inspelningar i Surveillance Station (fel 105 = saknar behörighet).</li>
   <li>Varje kamera i live är en ström från NAS:en. Fyra kameror samtidigt belastar en DS918+ något – stäng fliken när du inte tittar.</li>
-  <li><i>Visa rådata för felsökning</i> visar vad Surveillance Station svarar, utan lösenord.</li>
+  <li>Står uppspelningen still laddas den om automatiskt. Går det inte efter tre försök visas <i>Uppspelningen fastnade</i> – tryck ▶ för att försöka igen.</li>
+  <li><i>Visa rådata för felsökning</i> (slås på under <i>Övrigt &gt; Översikt</i>) visar vad Surveillance Station svarar, utan lösenord och strömnycklar, och de senaste uppspelningarna.</li>
 </ul>`],
       ['modes', 'Lägen och Home Mode', `
 <p>SynoArgus har ett aktuellt <b>läge</b> – från början <i>Hemma</i>, <i>Natt</i> och <i>Borta</i>. Byt namn och lägg till egna under <b>Inställningar &gt; Lägen</b>.</p>
@@ -165,6 +170,7 @@ window.GUIDE = {
   <li><b>Styr kameror (webhook)</b> – slå på eller av analysen per kamera, t.ex. från Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station påverkas inte.</li>
   <li><b>AI-modell</b> – börja med en s-modell. Under 1 s per bild (se <i>Ta bild och analysera</i>) är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.</li>
   <li><b>Inloggning</b> – vilka DSM-konton som får logga in, och Synology SSO.</li>
+  <li><b>Översikt</b> – ljud på direkt i helskärm, och om länken till rådata för felsökning ska visas.</li>
   <li><b>Lagring</b> – händelser sparas i X dagar <b>eller</b> tills de tar Y MB, det som kommer först (standard 14 dagar och 2000 MB). De äldsta tas bort först. Hur mycket som används visas under Övrigt och Status.</li>
   <li><b>Säkerhetskopia</b> – exportera och importera alla inställningar. Med lösenord blir filen känslig – förvara den säkert. Lösenorden ligger i klartext i <code>data/config.json</code> på NAS:en (läsbar bara för root).</li>
   <li><b>Uppdatering</b> – en prick på Status betyder ny version. Container Manager &gt; Projekt &gt; synoargus &gt; Åtgärd &gt; <b>Stoppa</b>, sedan <b>Bygg</b>. Städa under Image &gt; Remove Unused Images.</li>
@@ -191,8 +197,9 @@ window.GUIDE = {
   <li><b>Larm kommer sent</b> – under <i>Jag går förbi nu</i> går kalibreringen före larm i 90 sekunder.</li>
   <li><b>Bevakningen ger för många händelser</b> – kör i testläge, höj tiderna, slå på <i>Bara när zonen är upptagen</i> och lägg uteslutningszoner över träd och vägar.</li>
   <li><b>Bevakningen visar bara "stilla"</b> – titta på diagnosraden: många dubbletter = sänk bilder per sekund; liten andel i zonen = gör zonen mindre eller se <i>Visa vad bevakningen ser</i>. Prova <i>Kontrollera närvaro med AI</i>.</li>
+  <li><b>Containern vill inte stoppa</b> – före 0.8 kunde en öppen Översikt hålla kvar den. Lägg till <code>init: true</code> och <code>stop_grace_period: 15s</code> i docker-compose.yml. Hänger den ändå: <code>sudo docker rm -f synoargus</code> via SSH och sedan <i>Build</i> på projektet.</li>
   <li><b>Inget händer när jag trycker</b> – efter en uppdatering kan webbläsaren ha gamla filer kvar. Ladda om sidan (från 0.7 sker det av sig själv).</li>
-  <li><b>Översikt visar bara bilder</b> – livevideon kunde inte startas. Se <i>Visa rådata för felsökning</i>, och prova en egen adress under Kameror &gt; Videoström.</li>
+  <li><b>Översikt visar bara bilder</b> – livevideon kunde inte startas. Slå på rådata under Övrigt &gt; Översikt, se <i>Visa rådata för felsökning</i>, och prova en egen adress under Kameror &gt; Videoström.</li>
   <li><b>Logg</b> – Container Manager &gt; Container &gt; synoargus &gt; Logg. Från 0.6 står inga lösenord eller nycklar i loggen; rensa gärna äldre loggar.</li>
 </ul>`],
     ],
@@ -214,6 +221,7 @@ window.GUIDE = {
 <ul>
   <li><b>Active in mode</b> – in which modes the camera is active (none selected = all). See <a href="#g-modes">Modes</a>.</li>
   <li><b>What should be registered as an event?</b> – which types give an event and a notification. More types under <i>Add another type…</i></li>
+  <li><b>More settings</b> – the fields below are under a button that starts closed.</li>
   <li><b>Minimum confidence (%)</b> – how sure the AI must be. Start around 50–60. Empty field = the default under Other.</li>
   <li><b>Minimum width/height</b> – ignore small detections far away (pixels in the image).</li>
   <li><b>Quiet after alarm</b> – no new alarms for X seconds after an alarm.</li>
@@ -263,8 +271,11 @@ window.GUIDE = {
       ['overview', 'Overview (experimental)', `
 <p>The <b>Overview</b> tab shows all cameras at once, much like Multi View in Surveillance Station.</p>
 <ul>
-  <li><b>Layout</b> 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages.</li>
-  <li><b>Tap a camera</b> for full screen with sound. <i>Sound</i> toggles it.</li>
+  <li>Overview is the start page when you open SynoArgus.</li>
+  <li><b>Layout</b> 1 camera, 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages (‹ ›).</li>
+  <li><b>Tap a camera</b> for full screen. Whether sound is on at once is set under <i>Other &gt; Overview</i>; <i>Sound</i> toggles it. <b>Zoom</b> by pinching with two fingers, with + and − or by double-tapping; drag to move the picture and ⟲ resets.</li>
+  <li><b>Tap the date and time</b> below the buttons to choose a point in time to play from.</li>
+  <li>If there is no recording, SynoArgus's own image from the event is shown, with the text <i>Image from the event – no recording</i>.</li>
   <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. The buttons: <b>&lt;!</b> previous event (in live: the latest), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> and <b>!&gt;</b> next event. An event is played from 3 s before. Pause in live freezes the picture; ▶ returns to live. The date and time of what is shown are below the buttons.</li>
 </ul>
 <h4>Good to know</h4>
@@ -276,7 +287,8 @@ window.GUIDE = {
   <li>The timeline shows everything Surveillance Station has recorded, also when SynoArgus has not alarmed. If the NAS leaves out start and stop times, the time is read from the file name.</li>
   <li>Recordings require that the SynoArgus account may view recordings in Surveillance Station (error 105 = missing permission).</li>
   <li>Each live camera is a stream from the NAS. Four cameras at once put some load on a DS918+ – close the tab when you are not watching.</li>
-  <li><i>Show raw data for troubleshooting</i> shows what Surveillance Station answers, without passwords.</li>
+  <li>If playback stands still it is reloaded automatically. If it still fails after three attempts, <i>Playback got stuck</i> is shown – press ▶ to try again.</li>
+  <li><i>Show raw data for troubleshooting</i> (turned on under <i>Other &gt; Overview</i>) shows what Surveillance Station answers, without passwords and stream keys, and the latest playbacks.</li>
 </ul>`],
       ['modes', 'Modes and Home Mode', `
 <p>SynoArgus has a current <b>mode</b> – initially <i>Home</i>, <i>Night</i> and <i>Away</i>. Rename them and add your own under <b>Settings &gt; Modes</b>.</p>
@@ -361,6 +373,7 @@ window.GUIDE = {
   <li><b>Control cameras (webhook)</b> – turn the analysis on or off per camera, e.g. from Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station is not affected.</li>
   <li><b>AI model</b> – start with an s model. Under 1 s per image (see <i>Take snapshot and analyse</i>) is good. Own models (e.g. YOLO26) are added with the converter, see the README.</li>
   <li><b>Login</b> – which DSM accounts may log in, and Synology SSO.</li>
+  <li><b>Overview</b> – sound on at once in full screen, and whether the link to raw data for troubleshooting is shown.</li>
   <li><b>Storage</b> – events are kept for X days <b>or</b> until they take up Y MB, whichever comes first (default 14 days and 2000 MB). The oldest go first. The space used is shown under Other and Status.</li>
   <li><b>Backup</b> – export and import all settings. With passwords the file is sensitive – keep it safe. The passwords are stored in plain text in <code>data/config.json</code> on the NAS (readable by root only).</li>
   <li><b>Update</b> – a dot on Status means a new version. Container Manager &gt; Project &gt; synoargus &gt; Action &gt; <b>Stop</b>, then <b>Build</b>. Clean up under Image &gt; Remove Unused Images.</li>
@@ -387,8 +400,9 @@ window.GUIDE = {
   <li><b>Alarms arrive late</b> – during <i>I am walking past now</i> the calibration goes before alarms for 90 seconds.</li>
   <li><b>The watch gives too many events</b> – run it in test mode, raise the times, turn on <i>Only when the zone is occupied</i> and put exclusion zones over trees and roads.</li>
   <li><b>The watch only shows "quiet"</b> – look at the diagnostics line: many duplicates = lower the images per second; a small share in the zone = make the zone smaller or use <i>Show what the watch sees</i>. Try <i>Check presence with AI</i>.</li>
+  <li><b>The container will not stop</b> – before 0.8 an open Overview could hold it. Add <code>init: true</code> and <code>stop_grace_period: 15s</code> to docker-compose.yml. If it hangs anyway: <code>sudo docker rm -f synoargus</code> over SSH, then <i>Build</i> the project.</li>
   <li><b>Nothing happens when I press</b> – after an update the browser may keep old files. Reload the page (from 0.7 this happens by itself).</li>
-  <li><b>Overview only shows images</b> – live video could not be started. See <i>Show raw data for troubleshooting</i> and try your own address under Cameras &gt; Video stream.</li>
+  <li><b>Overview only shows images</b> – live video could not be started. Turn on raw data under Other &gt; Overview, see <i>Show raw data for troubleshooting</i> and try your own address under Cameras &gt; Video stream.</li>
   <li><b>Logs</b> – Container Manager &gt; Container &gt; synoargus &gt; Log. From 0.6 the log contains no passwords or keys; feel free to clear older logs.</li>
 </ul>`],
     ],

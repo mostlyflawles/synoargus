@@ -19,11 +19,31 @@ GITHUB_REPO = os.environ.get("SYNOARGUS_REPO", "mostlyflawles/synoargus")
 COMMON_TYPES = ["person", "car", "truck", "bus", "bicycle", "motorcycle", "cat", "dog", "bird"]
 
 TYPE_NAMES_SV = {
-    "person": "Person", "car": "Bil", "truck": "Lastbil", "bus": "Buss", "bicycle": "Cykel",
-    "motorcycle": "Motorcykel", "cat": "Katt", "dog": "Hund", "bird": "Fågel", "horse": "Häst",
-    "sheep": "Får", "cow": "Ko", "bear": "Björn", "backpack": "Ryggsäck", "handbag": "Handväska",
-    "suitcase": "Resväska", "umbrella": "Paraply", "boat": "Båt",
+    "person": "Person", "bicycle": "Cykel", "car": "Bil", "motorcycle": "Motorcykel", "airplane": "Flygplan",
+    "bus": "Buss", "train": "Tåg", "truck": "Lastbil", "boat": "Båt", "traffic light": "Trafikljus",
+    "fire hydrant": "Brandpost", "stop sign": "Stoppskylt", "parking meter": "Parkeringsautomat", "bench": "Bänk",
+    "bird": "Fågel", "cat": "Katt", "dog": "Hund", "horse": "Häst", "sheep": "Får", "cow": "Ko",
+    "elephant": "Elefant", "bear": "Björn", "zebra": "Zebra", "giraffe": "Giraff", "backpack": "Ryggsäck",
+    "umbrella": "Paraply", "handbag": "Handväska", "tie": "Slips", "suitcase": "Resväska", "frisbee": "Frisbee",
+    "skis": "Skidor", "snowboard": "Snowboard", "sports ball": "Boll", "kite": "Drake", "baseball bat": "Basebollträ",
+    "baseball glove": "Basebollhandske", "skateboard": "Skateboard", "surfboard": "Surfbräda",
+    "tennis racket": "Tennisracket", "bottle": "Flaska", "wine glass": "Vinglas", "cup": "Kopp", "fork": "Gaffel",
+    "knife": "Kniv", "spoon": "Sked", "bowl": "Skål", "banana": "Banan", "apple": "Äpple", "sandwich": "Smörgås",
+    "orange": "Apelsin", "broccoli": "Broccoli", "carrot": "Morot", "hot dog": "Varmkorv", "pizza": "Pizza",
+    "donut": "Munk", "cake": "Tårta", "chair": "Stol", "couch": "Soffa", "potted plant": "Krukväxt", "bed": "Säng",
+    "dining table": "Matbord", "toilet": "Toalett", "tv": "TV", "laptop": "Bärbar dator", "mouse": "Datormus",
+    "remote": "Fjärrkontroll", "keyboard": "Tangentbord", "cell phone": "Mobiltelefon", "microwave": "Mikrovågsugn",
+    "oven": "Ugn", "toaster": "Brödrost", "sink": "Diskho", "refrigerator": "Kylskåp", "book": "Bok",
+    "clock": "Klocka", "vase": "Vas", "scissors": "Sax", "teddy bear": "Nalle", "hair drier": "Hårtork",
+    "toothbrush": "Tandborste",
 }
+
+# Grupper i listan "Lägg till annan typ…" (det som inte står här hamnar under Övrigt)
+TYPE_GROUPS = [
+    ["Fordon", ["airplane", "boat", "train", "bus", "truck", "car", "motorcycle", "bicycle"]],
+    ["Djur", ["bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"]],
+    ["Väskor och bagage", ["backpack", "handbag", "suitcase", "umbrella"]],
+]
 
 PLURAL_SV = {
     "person": "personer", "car": "bilar", "truck": "lastbilar", "bus": "bussar", "bicycle": "cyklar",
@@ -89,6 +109,10 @@ DEFAULTS = {
         "days_to_keep": 14,
         "max_mb": 2000,         # högst så många MB bilder (0 = ingen gräns); det som inträffar först gäller
         "save_empty": False,    # spara även analyser utan träff
+    },
+    "overview": {
+        "sound": True,          # ljud på direkt i helskärm
+        "debug": False,         # visa länken till rådata i Översikt
     },
     "public_url": "",           # adress till SynoArgus, används i länkar i larm
     # Lägen: namn "" = standardnamn (Hemma/Natt/Borta) på valt språk

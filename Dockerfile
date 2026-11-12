@@ -38,4 +38,4 @@ VOLUME ["/data"]
 EXPOSE 8686
 HEALTHCHECK --interval=60s --timeout=5s --start-period=60s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8686/api/state',timeout=4)" || exit 1
 # No access log (the trigger token is part of the URL) and no blind trust in proxy headers (handled in the app).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8686", "--no-proxy-headers", "--no-access-log", "--no-server-header"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8686", "--no-proxy-headers", "--no-access-log", "--no-server-header", "--timeout-graceful-shutdown", "5"]

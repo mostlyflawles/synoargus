@@ -2,6 +2,7 @@
 import asyncio
 import contextvars
 import base64
+import collections
 import hmac
 import io
 import json
@@ -19,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 from . import auth, i18n, notifiers, storage, validate
-from .config import (CAPTURE_DIR, COMMON_TYPES, DEFAULT_MODEL, GITHUB_REPO, MODEL_DIR, TYPE_NAMES_SV,
+from .config import (CAPTURE_DIR, COMMON_TYPES, DEFAULT_MODEL, GITHUB_REPO, MODEL_DIR, TYPE_GROUPS, TYPE_NAMES_SV,
                      USER_MODEL_DIR, camera_defaults, config)
 from .detector import COCO as COCO_TYPES
 from .detector import Detector
@@ -297,6 +298,27 @@ async def startup():
     asyncio.create_task(update_loop())
 
 
+LIVE_SOCKETS = set()            # öppna liveströmmar, stängs vid avstängning
+PLAYBACKS = collections.deque(maxlen=10)   # senaste uppspelningarna, för rådata
+SHUTTING_DOWN = False
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Stänger liveströmmar och go2rtc så att containern stoppar direkt (uvicorn väntar annars på öppna anslutningar)."""
+    global SHUTTING_DOWN
+    SHUTTING_DOWN = True
+    for ws in list(LIVE_SOCKETS):
+        try:
+            await ws.close(code=1001)
+        except Exception:
+            pass
+    try:
+        await asyncio.wait_for(streams.stop(), 3)
+    except Exception:
+        pass
+
+
 @app.middleware("http")
 async def headers(request, call_next):
     lg = request.headers.get("x-lang")
@@ -526,7 +548,7 @@ async def get_config(request: Request):
     require(request)
     return {
         "config": masked_config(),
-        "types": {"common": COMMON_TYPES, "all": COCO_TYPES, "names": TYPE_NAMES_SV},
+        "types": {"common": COMMON_TYPES, "all": COCO_TYPES, "names": TYPE_NAMES_SV, "groups": TYPE_GROUPS},
         "models": detector.status()["available"],
         "mode": modes.info(),
         "trigger_base": base_url(request),
@@ -545,7 +567,7 @@ def validate_auth(request, a):
 async def put_settings(request: Request, body: dict = Body(...)):
     require(request)
     old = config.get()
-    allowed = ("synology", "auth", "detector", "defaults", "storage", "public_url", "language", "timezone",
+    allowed = ("synology", "auth", "detector", "defaults", "storage", "overview", "public_url", "language", "timezone",
                "modes", "mode_auto")
     new = unmask({k: v for k, v in body.items() if k in allowed}, old)
     try:
@@ -618,8 +640,8 @@ async def import_settings(request: Request, body: dict = Body(...)):
     if "_synoargus" not in body or not isinstance(body.get("cameras"), dict):
         raise err(400, "Filen är inte en SynoArgus-export")
     old = config.get()
-    keep = ("language", "timezone", "synology", "auth", "detector", "defaults", "storage", "public_url", "modes",
-            "mode_auto", "trigger_token")
+    keep = ("language", "timezone", "synology", "auth", "detector", "defaults", "storage", "overview", "public_url",
+            "modes", "mode_auto", "trigger_token")
     try:
         notis = validate.notifier_list(body.get("notifiers") or [], notifiers.KINDS)
         notis = unmask_notifiers(notis, old.get("notifiers"))
@@ -923,7 +945,11 @@ async def live_ws(ws: WebSocket, cam: str = ""):
         await ws.close(code=4404)
         return
     import websockets
+    if SHUTTING_DOWN:
+        await ws.close(code=1001)
+        return
     await ws.accept()
+    LIVE_SOCKETS.add(ws)
     try:
         async with websockets.connect(f"{streams_mod.WS}/api/ws?src={name}", max_size=None,
                                       open_timeout=10, ping_interval=None) as up:
@@ -949,6 +975,7 @@ async def live_ws(ws: WebSocket, cam: str = ""):
                 t.cancel()
     except Exception as e:
         log.debug("Liveström %s: %s", cam, streams_mod.mask(e))
+    LIVE_SOCKETS.discard(ws)
     try:
         await ws.close()
     except Exception:
@@ -980,7 +1007,8 @@ async def overview_timeline(request: Request, start: float = 0, end: float = 0, 
             error = _ss_err(e, "recordings").detail if e.code == 105 else str(e)
         except Exception as e:
             error = safe_error(e)
-    evs = [{"ts": e["ts"], "camera": e["camera"], "types": e["types"], "id": e["id"], "alarm": e["alarm"]}
+    evs = [{"ts": e["ts"], "camera": e["camera"], "types": e["types"], "id": e["id"], "alarm": e["alarm"],
+            "image": e["image"]}
            for e in storage.events_between(start, end, cam or None)]
     return {"start": start, "end": end, "recordings": recs, "events": evs, "error": error}
 
@@ -1004,18 +1032,32 @@ async def overview_recording(request: Request, cam: str, t: float, length: int =
         return body if check else JSONResponse(body, status_code=404)
     r = cover[-1]
     offset = max(0.0, t - r["start"])
+    nxt = [x["start"] for x in items if x["cam"] == c["ss_id"] and x["start"] >= r["stop"]]
     if check:
-        return {"found": True, "start": r["start"] + offset, "stop": r["stop"]}
+        return {"found": True, "start": r["start"] + offset, "stop": r["stop"], "next": min(nxt) if nxt else None,
+                "ongoing": bool(r.get("estimated")) and r["stop"] >= time.time() - 5}
+    log_entry = {"at": _iso(time.time()), "camera": cam, "time": _iso(t), "recording": r["id"],
+                 "offset_s": round(offset, 1), "length_s": length, "bytes": 0, "status": "start"}
+    PLAYBACKS.append(log_entry)
     try:
         resp = await ss.open_recording(r["id"], offset * 1000, length * 1000)
     except SynologyError as e:
+        log_entry.update(status="error", error=str(e))
         raise HTTPException(502, str(e))
+    log_entry.update(status="streaming", content_type=resp.headers.get("content-type"))
 
     async def body():
         try:
             async for chunk in resp.aiter_bytes():
+                log_entry["bytes"] += len(chunk)
                 yield chunk
+            log_entry["status"] = "done"
+        except Exception as e:
+            log_entry.update(status="error", error=safe_error(e))
+            raise
         finally:
+            if log_entry["status"] == "streaming":
+                log_entry["status"] = "closed by browser"
             await resp.aclose()
     return StreamingResponse(body(), media_type=resp.headers.get("content-type") or "video/mp4",
                              headers={"X-Start": str(r["start"] + offset), "X-Stop": str(r["stop"]),
@@ -1050,7 +1092,7 @@ async def overview_raw(request: Request):
         except Exception as e:
             rec_raw = {"error": str(e)}
     return {"live": streams.status(), "live_paths": json.loads(streams_mod.mask(json.dumps(streams.raw))),
-            "recordings_parsed": parsed, "recording_test": play,
+            "recordings_parsed": parsed, "recording_test": play, "playbacks": list(PLAYBACKS)[::-1],
             "recordings": json.loads(streams_mod.mask(json.dumps(_mask_rules(rec_raw))))}
 
 

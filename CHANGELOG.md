@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8 (build 14) – 2026-11-12
+- **Overview:**
+  - Opens as the start page.
+  - New layout **1 camera** (‹ › switches camera).
+  - Tap the date and time to **jump to a chosen point in time**.
+  - **Zoom in full screen:** pinch with two fingers, + / − buttons, double-tap, drag to move, ⟲ to reset.
+  - Where there is no recording, SynoArgus's own **image from the event** is shown.
+  - Fixed: playback could get stuck, and pause/play did nothing. Playback that stands still is reloaded, the next part starts where the previous one actually ended (or at the next recording), and ▶ reloads a stuck video. The raw data shows the latest playbacks.
+- **Settings > Other > Overview:** sound on at once in full screen, and whether the raw-data link is shown (off by default).
+- **Cameras:** the fields from *Minimum confidence* to *Video stream* are under **More settings** (closed by default).
+- All 80 object types have Swedish names; *Add another type…* is grouped (vehicles, animals, bags, other) and sorted.
+- Fixed: the container could refuse to stop while Overview was open. SynoArgus now closes live streams and go2rtc and stops within 5 seconds. `docker-compose.yml` gains `init: true` and `stop_grace_period: 15s` – add them to your own compose file.
+
 ## 0.7.1 (build 13) – 2026-11-11
 - **Overview:**
   - Fixed: recordings from the NAS were not shown and could not be played when Surveillance Station sent the recording list without start and stop times. The start is now read from the file name and the end is the next recording's start; the timeline shows everything the NAS has recorded, not only SynoArgus events.

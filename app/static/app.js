@@ -23,6 +23,14 @@ const EN = {
   'Utan event skickas den senaste händelsen som väntar. Med &text=… ersätts texten. Med en reservtid skickas den ändå om ingen har anropat.': 'Without event the latest waiting event is sent. With &text=… the text is replaced. With a fallback time it is sent anyway if nobody has called.',
   'Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.': 'No filters: this notification receives every alarm from every camera in every mode.',
   'väntar på anrop': 'waiting for a call', 'skickad på begäran': 'sent on request',
+  'Utvärdera modeller': 'Evaluate models', 'Jämför processor och grafikkrets': 'Compare CPU and GPU',
+  'Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larmen fortsätter som vanligt, men NAS:en blir långsammare medan det pågår.': 'Takes one image from the camera and lets every installed model analyse it with the camera\'s settings. Alarms carry on as usual, but the NAS is slower while it runs.',
+  'används nu': 'in use', 'per bild': 'per image', 'laddning': 'load', 'första bilden': 'first image', 'Inget hittat': 'Nothing found',
+  'Skulle ha larmat': 'Would have alarmed', 'Skulle inte ha larmat': 'Would not have alarmed', 'Använd den här modellen': 'Use this model',
+  'Analyserar med {m} ({n} av {tot}) …': 'Analysing with {m} ({n} of {tot}) …', 'Tar en bild…': 'Taking an image…',
+  '{cam}, bild tagen {when}. Snabbast först; tryck på en bild för att förstora.': '{cam}, image taken at {when}. Fastest first; tap an image to enlarge.',
+  'Vald – tryck Spara för att börja använda den': 'Selected – press Save to start using it',
+  'Laddar modell… (första gången kan ta upp till en minut)': 'Loading model… (the first time can take up to a minute)',
   'Ytterligare inställningar': 'More settings', 'Fordon': 'Vehicles', 'Djur': 'Animals', 'Väskor och bagage': 'Bags and luggage',
   'Ljud på direkt i helskärm': 'Sound on in full screen', 'Visa rådata för felsökning i Översikt': 'Show raw data for troubleshooting in Overview',
   'Webbläsare kan kräva ett tryck innan ljud spelas.': 'Browsers may require a tap before sound plays.',
@@ -597,7 +605,7 @@ function renderCamEditor(cam) {
     </div>
     <div id="mList" class="small"></div>
   </div>
-  <div class="panel" id="calPanel"><h3>${t('Kalibrering')}</h3><div id="calBody" class="muted small">${t('Hämtar…')}</div></div>
+  <div class="panel" id="calPanel"><h3>${t('Kalibrering')} <span class="tag">${t('experimentell')}</span></h3><div id="calBody" class="muted small">${t('Hämtar…')}</div></div>
   <div class="row"><button class="btn primary" id="saveCam">${t('Spara')}</button><button class="btn danger" id="delCam">${t('Ta bort kameran')}</button></div>`;
 
   const toggleType = x => { cam.types = cam.types.includes(x) ? cam.types.filter(y => y !== x) : [...cam.types, x]; };
@@ -1181,6 +1189,17 @@ function renderSettings() {
   <div class="panel"><h3>${t('AI')}</h3><div class="grid">
     <label class="f">${t('Modell')}<select name="det.model">${models.map(m => `<option value="${esc(m.name)}" ${c.detector.model === m.name ? 'selected' : ''}>${esc(m.name)} – ${modelHint(m.name)} (${m.source === 'user' ? t('egen') : t('inbyggd')})</option>`).join('')}</select><span class="hint">${t('Börja med en s-modell. Jämför med Ta bild och analysera under Kameror – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.')}</span></label>
     <label class="f">${t('Beräkning')}<select name="det.device">${[['AUTO', t('Automatiskt (grafikkrets om den finns)')], ['GPU', t('Grafikkrets')], ['CPU', t('Processor')]].map(([v, l]) => `<option value="${v}" ${c.detector.device === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+  </div>
+  <div class="evalbox">
+    <h4>${t('Utvärdera modeller')}</h4>
+    <p class="hint">${t('Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larmen fortsätter som vanligt, men NAS:en blir långsammare medan det pågår.')}</p>
+    <div class="row">
+      <select id="evCam" data-nosave style="width:auto">${Object.keys(c.cameras || {}).map(n => `<option>${esc(n)}</option>`).join('')}</select>
+      <label class="check"><input type="checkbox" id="evBoth" data-nosave> ${t('Jämför processor och grafikkrets')}</label>
+      <button type="button" class="btn" id="evStart" ${Object.keys(c.cameras || {}).length ? '' : 'disabled'}>🔬 ${t('Utvärdera modeller')}</button>
+    </div>
+    <div id="evProg" class="small muted"></div>
+    <div id="evGrid" class="evgrid"></div>
   </div></div>
 
   <div class="panel"><h3>${t('Standardvärden för kameror')}</h3><div class="grid">
@@ -1220,7 +1239,8 @@ function renderSettings() {
     <label class="f">${t('Klienthemlighet (Application Secret)')}<input name="sso.client_secret" type="password" value="${esc(sso.client_secret)}" autocomplete="new-password"></label>
     <label class="f">${t('Omdirigerings-URI')}<input name="sso.redirect_url" value="${esc(sso.redirect_url || (S.triggerBase + '/auth/sso/callback'))}"></label>
   </div></div>
-  <div class="row" style="margin-bottom:14px"><button class="btn primary">${t('Spara')}</button></div>
+  <div class="row" style="margin-bottom:14px"><button class="btn primary">${t('Spara')}</button>
+    <span class="muted small" id="modelHint" hidden>⏳ ${t('Laddar modell… (första gången kan ta upp till en minut)')}</span></div>
   </form>
 
   <div class="panel"><h3>${t('Styr kameror (webhook)')}</h3>
@@ -1246,7 +1266,13 @@ function renderSettings() {
 
   drawPwa();
   const form = $('#setForm');
-  const ser = () => [...form.elements].map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001');
+  const ser = () => [...form.elements].filter(x => x.tagName !== 'BUTTON' && !('nosave' in x.dataset)).map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001');
+  // byte av AI-modell: tala om att det kan ta tid att spara
+  const modelChanged = () => form.elements['det.model'].value !== c.detector.model || form.elements['det.device'].value !== (c.detector.device || 'AUTO');
+  const showModelHint = () => { $('#modelHint').hidden = !modelChanged(); };
+  form.elements['det.model'].addEventListener('change', showModelHint);
+  form.elements['det.device'].addEventListener('change', showModelHint);
+  drawEvaluate();
   let snap = ser();
   S.dirty = () => !!$('#setForm') && ser() !== snap;
   const ctlUrl = () => {
@@ -1302,9 +1328,71 @@ function renderSettings() {
       snap = ser();
       if (newLang !== S.lang) { try { localStorage.setItem('synoargus.lang', newLang); } catch (e) { /* */ } S.dirty = null; location.reload(); return; }
       await loadConfig(); toast(t('Sparat'));
+      if ($('#modelHint')) $('#modelHint').hidden = true;
     } catch (err) { toast(err.message, true); }
     btn.disabled = false;
   });
+}
+
+/* ---------------------------------------------------------------- Utvärdera modeller (Övrigt > AI) */
+function drawEvaluate() {
+  const E = { have: 0, timer: null };
+  const why = { 'typ': t('fel typ'), 'säkerhet': t('för låg säkerhet'), 'storlek': t('för liten'), 'zon': t('i zon') };
+  const devName = d => ({ CPU: t('Processor'), GPU: t('Grafikkrets') })[d] || d || '–';
+  const card = (r, job) => {
+    const active = job.active && r.model === job.active.model && (!r.device || r.device === job.active.device);
+    const hits = r.detections.filter(d => d.valid).map(d => `<b>${esc(tname(d.label))} ${Math.round(d.confidence)} %</b>`)
+      .concat(r.detections.filter(d => !d.valid).map(d => `<span class="muted">${esc(tname(d.label))} ${Math.round(d.confidence)} % (${why[d.reason] || d.reason})</span>`));
+    return `<div class="evcard ${r.alarm ? 'alarm' : ''}">
+      ${r.image ? `<img class="shot" src="${r.image}" alt="">` : `<div class="evnoimg">${esc(r.error || '')}</div>`}
+      <div class="evbody"><div class="evhead"><b>${esc(r.model)}</b>${active ? `<span class="pill">${t('används nu')}</span>` : ''}</div>
+        ${r.error ? `<p class="err small">${esc(r.error)}</p>` : `
+        <div class="evstats"><span><b>${r.ms} ms</b> ${t('per bild')}</span><span>${devName(r.device)}${r.fallback ? ' ⚠' : ''}</span><span>${t('laddning')} ${r.load_s} s</span></div>
+        <div class="small muted">${t('första bilden')} ${r.first_ms} ms · ${r.size} px · ${esc(modelHint(r.model))}</div>
+        <div class="evhits small">${hits.join(', ') || `<span class="muted">${t('Inget hittat')}</span>`}</div>
+        <div class="small">${r.alarm ? '🔔 ' + t('Skulle ha larmat') : t('Skulle inte ha larmat')}</div>
+        ${active ? '' : `<button type="button" class="btn" data-use="${esc(r.model)}" data-dev="${esc(r.wanted)}">${t('Använd den här modellen')}</button>`}`}
+      </div></div>`;
+  };
+  const poll = async () => {
+    clearTimeout(E.timer);
+    if (!$('#evGrid')) return;
+    let job;
+    try { job = await api(`/api/models/evaluate?since=${E.have}`); } catch (e) { $('#evProg').textContent = e.message; return; }
+    if (!$('#evGrid') || !job.camera) return;
+    if (E.have === 0) $('#evGrid').innerHTML = '';
+    (job.results || []).forEach(r => $('#evGrid').insertAdjacentHTML('beforeend', card(r, job)));
+    E.have += (job.results || []).length;
+    $('#evStart').disabled = job.running;
+    const when = new Date(job.started * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE', { hour: '2-digit', minute: '2-digit' });
+    $('#evProg').innerHTML = job.running
+      ? `<span class="spinner"></span> ${esc(t('Analyserar med {m} ({n} av {tot}) …', { m: job.current ? job.current.model + (job.current.device !== 'AUTO' ? ' / ' + devName(job.current.device) : '') : '', n: job.done + 1, tot: job.total }))}`
+      : esc(t('{cam}, bild tagen {when}. Snabbast först; tryck på en bild för att förstora.', { cam: job.camera, when })) + (job.error ? ` <span class="err">${esc(job.error)}</span>` : '');
+    if (!job.running) {          // sortera: snabbast först
+      const cards = [...$('#evGrid').children];
+      cards.sort((a, b) => (Number(a.querySelector('.evstats b')?.textContent.replace(/\D/g, '')) || 1e9) - (Number(b.querySelector('.evstats b')?.textContent.replace(/\D/g, '')) || 1e9));
+      cards.forEach(x => $('#evGrid').appendChild(x));
+    }
+    if (job.running) E.timer = setTimeout(poll, 1500);
+  };
+  stoppers.add(() => clearTimeout(E.timer));
+  $('#evStart').onclick = async () => {
+    $('#evStart').disabled = true; $('#evGrid').innerHTML = ''; E.have = 0;
+    $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('Tar en bild…'))}`;
+    try { await api('/api/models/evaluate', { method: 'POST', body: { camera: $('#evCam').value, compare_devices: $('#evBoth').checked } }); poll(); }
+    catch (e) { $('#evProg').textContent = e.message; $('#evStart').disabled = false; }
+  };
+  $('#evGrid').addEventListener('click', e => {
+    if (e.target.tagName === 'IMG') { $('#viewerImg').src = e.target.src; $('#viewer').showModal(); return; }
+    const b = e.target.closest('[data-use]'); if (!b) return;
+    const f = $('#setForm');
+    f.elements['det.model'].value = b.dataset.use;
+    if (b.dataset.dev && b.dataset.dev !== 'AUTO') f.elements['det.device'].value = b.dataset.dev;
+    f.elements['det.model'].dispatchEvent(new Event('change'));
+    f.elements['det.model'].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(t('Vald – tryck Spara för att börja använda den'));
+  });
+  poll();                        // visa senaste utvärderingen om det finns en
 }
 
 function renderModes() {
@@ -1418,7 +1506,7 @@ function renderGuide() {
     <p class="muted">${esc(g.intro)}</p>
     <div class="toc">${g.sections.map(([id, title]) => `<a class="chip" href="#g-${id}">${esc(title)}</a>`).join('')}</div>
     ${g.sections.map(([id, title, html]) => `<div class="panel" id="g-${id}"><h3>${esc(title)}</h3>
-      ${GUIDE_SHOTS[id] ? `<img class="shot" loading="lazy" src="/static/guide/${S.lang === 'en' ? 'en' : 'sv'}-${GUIDE_SHOTS[id]}.png" alt="">` : ''}${html}</div>`).join('')}
+      ${GUIDE_SHOTS[id] ? `<img class="shot" loading="lazy" src="/static/guide/${S.lang === 'en' ? 'en' : 'sv'}-${GUIDE_SHOTS[id]}.jpg" alt="">` : ''}${html}</div>`).join('')}
   </div>`;
   main.querySelectorAll('img.shot').forEach(im => { im.onclick = () => { $('#viewerImg').src = im.src; $('#viewer').showModal(); }; });
   main.querySelectorAll('a[href^="#g-"]').forEach(a => a.addEventListener('click', e => {

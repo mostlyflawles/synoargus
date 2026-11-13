@@ -21,16 +21,17 @@ with the picture.
   (live video via the bundled go2rtc)
 - Notifications can wait until **another system asks for them** (`/api/notify`), with an optional fallback time
 - Storage limit by age **and** size, with the space used shown
+- **Evaluate models:** one image from a camera, analysed by every installed model, with time per image and results side by side
 - Web UI in English and Swedish: setup wizard, event history with images, zone editor, test/live view with AI overlay,
   motion detection tuning, **calibration** (measures a day and proposes sensitivity/threshold), built-in guide, backup/restore, update check
 - Can be installed as an app (PWA) when opened over https
 - Login with your DSM account or Synology SSO (OpenID Connect)
 
 <p>
-<img src="app/static/guide/en-events.png" alt="Events" width="49%">
-<img src="app/static/guide/en-camera.png" alt="Camera settings" width="49%">
-<img src="app/static/guide/en-watch.png" alt="Watch" width="49%">
-<img src="app/static/guide/en-overview.png" alt="Overview" width="49%">
+<img src="app/static/guide/en-events.jpg" alt="Events" width="49%">
+<img src="app/static/guide/en-camera.jpg" alt="Camera settings" width="49%">
+<img src="app/static/guide/en-watch.jpg" alt="Watch" width="49%">
+<img src="app/static/guide/en-overview.jpg" alt="Overview" width="49%">
 </p>
 
 *Screenshots with a drawn demo camera.*

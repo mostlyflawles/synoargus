@@ -13,7 +13,7 @@ Object.assign(EN, {
   'Lägg till en kamera under Inställningar > Kameror först.': 'Add a camera under Settings > Cameras first.',
   '1 kamera': '1 camera', 'Bild från händelsen – ingen inspelning': 'Image from the event – no recording',
   'Uppspelningen fastnade. Tryck ▶ för att försöka igen.': 'Playback got stuck. Press ▶ to try again.',
-  'Gå till': 'Go to', 'Avbryt': 'Cancel', 'Välj datum och tid': 'Choose date and time',
+  'Hjälp': 'Help', 'Gå till': 'Go to', 'Avbryt': 'Cancel', 'Välj datum och tid': 'Choose date and time',
   'Zooma in': 'Zoom in', 'Zooma ut': 'Zoom out', 'Återställ zoom': 'Reset zoom',
   'Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.': 'Tap a camera for full screen. Drag the timeline to play recordings. Tap the date and time to choose a point in time.',
 });
@@ -225,24 +225,28 @@ async function renderOverview() {
   main.innerHTML = `
   <div class="ov">
     <div class="row ov-head"><h2 style="margin:0">${t('Översikt')}</h2>
-      <div class="chips" id="ovLayouts">${Object.keys(LAYOUTS).map(k => `<button class="chip ${k === layout ? 'on' : ''}" data-l="${k}" title="${k === '1x1' ? t('1 kamera') : k.replace('x', ' × ')}">${layoutIcon(k)}<span>${k === '1x1' ? t('1 kamera') : k.replace('x', ' × ')}</span></button>`).join('')}</div>
+      <div class="chips" id="ovLayouts">${Object.keys(LAYOUTS).map(k => `<button class="chip ${k === layout ? 'on' : ''}" data-l="${k}" title="${k === '1x1' ? '1' : k.replace('x', ' × ')}">${layoutIcon(k)}<span>${k === '1x1' ? '1' : k.replace('x', ' × ')}</span></button>`).join('')}</div>
       <div class="row" id="ovPager"></div></div>
     ${canLive ? '' : `<p class="warnbox">⚠ ${esc(t('Livevideo är inte tillgänglig ({e}). Kamerorna visas som bilder varannan sekund.', { e: !LivePlayer.supported() ? 'MSE' : t(info.live.error || 'go2rtc') }))}</p>`}
     <div class="ov-grid" id="ovGrid"></div>
     <div class="ov-bar">
-      <div class="ov-ctrl">
-        <button class="btn" data-c="prev" title="${t('Föregående händelse')}">&lt;!</button>
+      <div class="ov-ctrl" id="ovCtrl">
+        <button class="btn ev" data-c="prev" title="${t('Föregående händelse')}">&lt;!</button>
         <button class="btn" data-c="-60">−1 min</button><button class="btn" data-c="-10">−10 s</button>
         <button class="btn" data-c="pause" id="ovPause" title="${t('Pausa / spela')}">⏸</button>
         <button class="btn" data-c="+10">+10 s</button><button class="btn" data-c="+60">+1 min</button>
-        <button class="btn primary" data-c="live" id="ovLive">LIVE</button>
-        <button class="btn" data-c="next" title="${t('Nästa händelse')}">!&gt;</button>
+        <span class="ov-break"></span>
+        <button class="btn ev" data-c="next" title="${t('Nästa händelse')}">!&gt;</button>
       </div>
-      <button type="button" class="ov-time" id="ovTime" title="${t('Välj datum och tid')}">&nbsp;</button>
-      <form class="ov-goto" id="ovGoto" hidden><input type="datetime-local" step="1" id="ovGotoIn"><button class="btn primary">${t('Gå till')}</button><button type="button" class="btn" id="ovGotoX">${t('Avbryt')}</button></form>
+      <div class="ov-timerow">
+        <button type="button" class="ov-time" id="ovTime" title="${t('Välj datum och tid')}">&nbsp;</button>
+        <form class="ov-goto" id="ovGoto" hidden><input type="datetime-local" step="1" id="ovGotoIn"><button class="btn primary">${t('Gå till')}</button><button type="button" class="btn" id="ovGotoX">${t('Avbryt')}</button></form>
+        <button class="btn primary" data-c="live" id="ovLive">LIVE</button>
+      </div>
       <div class="ov-tlwrap"><div class="ov-tl" id="ovTl"><div class="ov-track" id="ovTrack"></div></div><div class="ov-cursor"></div></div>
-      <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.')}
-        ${S.cfg?.overview?.debug ? `<a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a>` : ''}</p><pre class="raw" id="ovRawBox" hidden></pre>
+      <details class="more ov-help"><summary>${t('Hjälp')}</summary>
+        <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.')}</p></details>
+      ${S.cfg?.overview?.debug ? `<p class="small" style="margin:6px 0 0"><a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a></p>` : ''}<pre class="raw" id="ovRawBox" hidden></pre>
     </div>
   </div>`;
 
@@ -312,7 +316,17 @@ async function renderOverview() {
     $('#ovLive').classList.add('primary'); $('#ovPause').textContent = '⏸';
     drawGrid(); scrollTo(now());
   }
-  $('.ov-ctrl').addEventListener('click', e => {
+  // får inte alla knappar plats på en rad hamnar <! och !> på en egen rad
+  const fitCtrl = () => {
+    const c = $('#ovCtrl'); if (!c) return;
+    c.classList.remove('split');
+    const tops = new Set([...c.querySelectorAll('.btn')].map(b => b.offsetTop));
+    if (tops.size > 1) c.classList.add('split');
+  };
+  fitCtrl();
+  window.addEventListener('resize', fitCtrl);
+  stoppers.add(() => window.removeEventListener('resize', fitCtrl));
+  $('.ov-bar').addEventListener('click', e => {
     const c = e.target.closest('[data-c]')?.dataset.c; if (!c) return;
     if (c === 'live') return goLive();
     if (c === 'prev' || c === 'next') return jumpEvent(c === 'next');

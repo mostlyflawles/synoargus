@@ -6,7 +6,7 @@ The same guide (shorter, in English and Swedish) is available in SynoArgus under
 The menu: **Events · Settings · Status · Guide**. Settings has five tabs: **Cameras · Notifications · Watch · Modes · Other**.
 If you leave a tab, camera or the page with unsaved changes, SynoArgus asks first.
 
-<img src="../app/static/guide/en-events.png" alt="The Events page" width="720">
+<img src="../app/static/guide/en-events.jpg" alt="The Events page" width="720">
 
 ## Contents
 
@@ -64,7 +64,7 @@ turns this on for existing rules.
 
 For each camera under **Settings > Cameras**:
 
-<img src="../app/static/guide/en-camera.png" alt="Camera settings" width="720">
+<img src="../app/static/guide/en-camera.jpg" alt="Camera settings" width="720">
 
 - **What should be registered as an event?** – object types (the built-in models know the 80 COCO classes).
 - **Active in mode** – in which [modes](#4-modes-and-home-mode) the camera alarms (none selected = all).
@@ -101,7 +101,7 @@ profile. All other motion settings (detection area etc.) are sent back unchanged
 Under **Settings > Notifications** you can add as many as you like and limit each one to certain cameras, object types and modes.
 Save, then press **Send test**.
 
-<img src="../app/static/guide/en-notifications.png" alt="Notifications" width="720">
+<img src="../app/static/guide/en-notifications.jpg" alt="Notifications" width="720">
 
 | Type | What you need |
 |---|---|
@@ -177,7 +177,7 @@ Set the address used in links under Settings > Other > Storage.
 ## 4. Modes and Home Mode
 
 
-<img src="../app/static/guide/en-modes.png" alt="Modes and schedule" width="720">
+<img src="../app/static/guide/en-modes.jpg" alt="Modes and schedule" width="720">
 SynoArgus has a current **mode** – by default *Home*, *Night* and *Away*. Rename them and add your own under
 **Settings > Modes**.
 
@@ -212,6 +212,8 @@ Filter example: outdoor cameras alarm in all modes, the hall only at *Night* and
 *Night* and *Away*, while the Homey webhook gets everything (e.g. to turn on lights).
 
 ## 5. Calibration
+
+*Experimental.*
 
 Under each camera (Settings > Cameras), **Calibration** measures how the camera behaves over 12–72 hours (default 24)
 and proposes sensitivity and threshold for Surveillance Station.
@@ -249,7 +251,7 @@ Under **Settings > Watch** SynoArgus can keep an eye on a **zone** in one camera
 you when something deviates from how it was. It is based on **motion** (SynoArgus' own image comparison), not on the
 AI model, so it also works in the dark and when whoever is watched is only a few dozen pixels tall.
 
-<img src="../app/static/guide/en-watch.png" alt="Watch" width="720">
+<img src="../app/static/guide/en-watch.jpg" alt="Watch" width="720">
 
 1. Choose a camera, press **Get image** and drag a box around what should be watched (with a little margin).
    The camera's exclusion zones are honoured too (put them over trees and roads).
@@ -268,7 +270,7 @@ GET http://<NAS-IP>:8686/api/watch?token=<token>&action=status
 
 ### Events
 
-<img src="../app/static/guide/en-watch-events.png" alt="Watch events" width="720">
+<img src="../app/static/guide/en-watch-events.jpg" alt="Watch events" width="720">
 
 | Event (`%event_id%`) | When | Settings |
 |---|---|---|
@@ -340,19 +342,20 @@ when most of the picture is zone, a person close to the camera is easily taken f
 
 ## 7. Overview (experimental)
 
-<img src="../app/static/guide/en-overview.png" alt="Overview" width="720">
+<img src="../app/static/guide/en-overview.jpg" alt="Overview" width="720">
 
 The **Overview** tab shows all cameras at once, much like Multi View in Surveillance Station:
 
 - Overview is the **start page**.
-- **Layouts** 1 camera, 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
+- **Layouts** 1, 1×2, 1×3, 2×2 and 2×3 (stored in the browser; more cameras than tiles give pages).
 - **Tap a camera** for full screen. Sound on at once is a setting (Settings > Other > Overview). **Zoom** by pinching,
   with + / −, or by double-tapping; drag to move the picture, ⟲ resets.
 - **Tap the date and time** to choose a point in time to play from.
 - Where there is no recording, SynoArgus's own image from the event is shown instead.
-- **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min, **LIVE** and **!>** next
-  event (after the last one: live). An event is played from 3 s before it. Pause in live freezes the picture; ▶ returns
-  to live. The date and time of what is shown are on a line below the buttons.
+- **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min and **!>** next event
+  (after the last one: live); if they do not fit on one row, <! and !> get a row of their own. An event is played from
+  3 s before it. Pause in live freezes the picture; ▶ returns to live. Below the buttons: the date and time of what is
+  shown, with **LIVE** next to them. The help text is folded under *Help*.
 - **Timeline** at the bottom: recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play
   from that point; scroll to the left to load earlier days.
 
@@ -431,6 +434,20 @@ If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS c
 **Allowed DSM accounts** apply to both password login and SSO.
 
 ## 11. Own models (YOLO26 etc.)
+
+### Evaluate models
+
+Settings > Other > AI > **Evaluate models**: choose a camera and press the button. SynoArgus takes **one** image and
+lets every installed model analyse it with that camera's current settings (types, minimum confidence, zones, minimum
+size). Each model gets a card with the image and its AI boxes, the time per image (median of three runs after a
+warm-up), the load time, CPU or GPU, what it found and whether it would have alarmed – fastest first. *Compare CPU and
+GPU* runs every model on both. *Use this model* selects it; press Save to start using it.
+
+Alarms carry on with the current model while it runs, but the NAS is slower. Each model is compiled once during the
+evaluation and kept in the cache, so switching to it afterwards is quick. Otherwise, the first time a model is loaded
+on the GPU can take up to a minute – the page says so next to Save.
+
+### Adding models
 
 The built-in models are YOLOX tiny/s/m (Apache-2.0). You can add Ultralytics models such as **YOLO26** or **YOLO11**:
 

@@ -69,11 +69,11 @@ window.GUIDE = {
 <p>Fliken <b>Översikt</b> visar alla kameror samtidigt, ungefär som Multi View i Surveillance Station.</p>
 <ul>
   <li>Översikt är startsidan när du öppnar SynoArgus.</li>
-  <li><b>Layout</b> 1 kamera, 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor (‹ ›).</li>
+  <li><b>Layout</b> 1, 1 × 2, 1 × 3, 2 × 2 eller 2 × 3. Valet sparas i webbläsaren. Fler kameror än rutor ger flera sidor (‹ ›).</li>
   <li><b>Tryck på en kamera</b> för helskärm. Om ljudet ska vara på direkt ställer du in under <i>Övrigt &gt; Översikt</i>; <i>Ljud</i> slår av och på. <b>Zooma</b> genom att nypa med två fingrar, med + och − eller genom att dubbeltrycka; dra för att flytta bilden och ⟲ återställer.</li>
   <li><b>Tryck på datum och tid</b> under knapparna för att välja en tidpunkt att spela upp från.</li>
   <li>Saknas inspelning visas SynoArgus egen bild från händelsen, med texten <i>Bild från händelsen – ingen inspelning</i>.</li>
-  <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. Knapparna: <b>&lt;!</b> föregående händelse (i live: den senaste), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> och <b>!&gt;</b> nästa händelse. En händelse spelas från 3 s före. Paus i live fryser bilden; ▶ går tillbaka till live. Datum och tid för det som visas står under knapparna.</li>
+  <li><b>Tidslinjen</b> längst ned visar inspelningar från Surveillance Station (blå) och SynoArgus händelser (orange). Dra den för att spela upp från den tiden. Knapparna: <b>&lt;!</b> föregående händelse (i live: den senaste), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i> och <b>!&gt;</b> nästa händelse. Ryms inte alla knappar på en rad hamnar &lt;! och !&gt; på en egen rad. En händelse spelas från 3 s före. Paus i live fryser bilden; ▶ går tillbaka till live. Under knapparna står datum och tid för det som visas, och bredvid <b>LIVE</b>. Hjälptexten finns under <i>Hjälp</i>.</li>
 </ul>
 <h4>Bra att veta</h4>
 <ul>
@@ -112,7 +112,7 @@ window.GUIDE = {
 </ul>
 <p><b>Exempel:</b> Följ Home Mode (på → Hemma, av → Borta) och schemat <i>Natt</i> 01:00 och <i>↩ Följ Home Mode</i> 06:00, alla dagar. Går du hemifrån 03:00 är det fortfarande Natt till 06:00, sedan Borta. Kommer du hem 05:00 blir det Hemma 06:00.</p>
 <p><b>Exempel på filter:</b> utekameror larmar i alla lägen, hallen bara i Natt och Borta. Telegram skickas bara i Natt och Borta, Homey-webhooken får allt (t.ex. för att tända lampor).</p>`],
-      ['calib', 'Kalibrering', `
+      ['calib', 'Kalibrering (experimentell)', `
 <p>Kalibreringen mäter under 12–72 timmar hur kameran beter sig och föreslår känslighet och tröskel för Surveillance Station. Den finns längst ned under varje kamera.</p>
 <ul>
   <li>Var 30:e sekund tas två bilder med en sekunds mellanrum. SynoArgus mäter själv hur mycket som ändras i detekteringsområdet och AI:n avgör om ett mål syns och rör sig.</li>
@@ -168,7 +168,8 @@ window.GUIDE = {
       ['other', 'Övrigt', `
 <ul>
   <li><b>Styr kameror (webhook)</b> – slå på eller av analysen per kamera, t.ex. från Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station påverkas inte.</li>
-  <li><b>AI-modell</b> – börja med en s-modell. Under 1 s per bild (se <i>Ta bild och analysera</i>) är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.</li>
+  <li><b>AI-modell</b> – börja med en s-modell. Under 1 s per bild (se <i>Ta bild och analysera</i>) är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README. Efter byte av modell kan det ta upp till en minut att spara första gången (modellen förbereds för grafikkretsen) – det står bredvid Spara.</li>
+  <li><b>Utvärdera modeller</b> – välj en kamera och tryck på knappen. SynoArgus tar <b>en</b> bild och låter varje installerad modell analysera den med kamerans inställningar. Varje modell visas med bilden och AI-rutorna, tid per bild, laddtid, processor eller grafikkrets, vad den hittade och om den skulle ha larmat. <i>Jämför processor och grafikkrets</i> kör varje modell på båda. <i>Använd den här modellen</i> väljer den – tryck sedan Spara. Larmen fortsätter som vanligt under tiden, men NAS:en blir långsammare. Efteråt går det snabbt att byta till en utvärderad modell.</li>
   <li><b>Inloggning</b> – vilka DSM-konton som får logga in, och Synology SSO.</li>
   <li><b>Översikt</b> – ljud på direkt i helskärm, och om länken till rådata för felsökning ska visas.</li>
   <li><b>Lagring</b> – händelser sparas i X dagar <b>eller</b> tills de tar Y MB, det som kommer först (standard 14 dagar och 2000 MB). De äldsta tas bort först. Hur mycket som används visas under Övrigt och Status.</li>
@@ -272,11 +273,11 @@ window.GUIDE = {
 <p>The <b>Overview</b> tab shows all cameras at once, much like Multi View in Surveillance Station.</p>
 <ul>
   <li>Overview is the start page when you open SynoArgus.</li>
-  <li><b>Layout</b> 1 camera, 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages (‹ ›).</li>
+  <li><b>Layout</b> 1, 1 × 2, 1 × 3, 2 × 2 or 2 × 3. The choice is stored in the browser. More cameras than tiles give several pages (‹ ›).</li>
   <li><b>Tap a camera</b> for full screen. Whether sound is on at once is set under <i>Other &gt; Overview</i>; <i>Sound</i> toggles it. <b>Zoom</b> by pinching with two fingers, with + and − or by double-tapping; drag to move the picture and ⟲ resets.</li>
   <li><b>Tap the date and time</b> below the buttons to choose a point in time to play from.</li>
   <li>If there is no recording, SynoArgus's own image from the event is shown, with the text <i>Image from the event – no recording</i>.</li>
-  <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. The buttons: <b>&lt;!</b> previous event (in live: the latest), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i>, <b>LIVE</b> and <b>!&gt;</b> next event. An event is played from 3 s before. Pause in live freezes the picture; ▶ returns to live. The date and time of what is shown are below the buttons.</li>
+  <li><b>The timeline</b> at the bottom shows recordings from Surveillance Station (blue) and SynoArgus events (orange). Drag it to play from that time. The buttons: <b>&lt;!</b> previous event (in live: the latest), <i>−1 min</i>, <i>−10 s</i>, <b>⏸/▶</b>, <i>+10 s</i>, <i>+1 min</i> and <b>!&gt;</b> next event. If not all buttons fit on one row, &lt;! and !&gt; get a row of their own. An event is played from 3 s before. Pause in live freezes the picture; ▶ returns to live. Below the buttons are the date and time of what is shown, with <b>LIVE</b> next to them. The help text is under <i>Help</i>.</li>
 </ul>
 <h4>Good to know</h4>
 <ul>
@@ -315,7 +316,7 @@ window.GUIDE = {
 </ul>
 <p><b>Example:</b> Follow Home Mode (on → Home, off → Away) and the schedule <i>Night</i> 01:00 and <i>↩ Follow Home Mode</i> 06:00, every day. If you leave at 03:00 it stays Night until 06:00, then Away. If you come home at 05:00 it becomes Home at 06:00.</p>
 <p><b>Filter example:</b> outdoor cameras alarm in all modes, the hall only in Night and Away. Telegram is sent only in Night and Away, the Homey webhook gets everything (e.g. to turn on lights).</p>`],
-      ['calib', 'Calibration', `
+      ['calib', 'Calibration (experimental)', `
 <p>The calibration measures over 12–72 hours how the camera behaves and proposes sensitivity and threshold for Surveillance Station. It is at the bottom of each camera.</p>
 <ul>
   <li>Every 30 seconds two images are taken one second apart. SynoArgus measures how much changes in the detection area and the AI decides whether a target is visible and moving.</li>
@@ -371,7 +372,8 @@ window.GUIDE = {
       ['other', 'Other', `
 <ul>
   <li><b>Control cameras (webhook)</b> – turn the analysis on or off per camera, e.g. from Homey: <code>/api/control?token=…&amp;camera=all&amp;action=off</code>. Surveillance Station is not affected.</li>
-  <li><b>AI model</b> – start with an s model. Under 1 s per image (see <i>Take snapshot and analyse</i>) is good. Own models (e.g. YOLO26) are added with the converter, see the README.</li>
+  <li><b>AI model</b> – start with an s model. Under 1 s per image (see <i>Take snapshot and analyse</i>) is good. Own models (e.g. YOLO26) are added with the converter, see the README. After changing the model, saving can take up to a minute the first time (the model is prepared for the GPU) – it says so next to Save.</li>
+  <li><b>Evaluate models</b> – choose a camera and press the button. SynoArgus takes <b>one</b> image and lets every installed model analyse it with the camera's settings. Each model is shown with the image and AI boxes, time per image, load time, CPU or GPU, what it found and whether it would have alarmed. <i>Compare CPU and GPU</i> runs each model on both. <i>Use this model</i> selects it – then press Save. Alarms carry on as usual meanwhile, but the NAS is slower. Afterwards, switching to an evaluated model is quick.</li>
   <li><b>Login</b> – which DSM accounts may log in, and Synology SSO.</li>
   <li><b>Overview</b> – sound on at once in full screen, and whether the link to raw data for troubleshooting is shown.</li>
   <li><b>Storage</b> – events are kept for X days <b>or</b> until they take up Y MB, whichever comes first (default 14 days and 2000 MB). The oldest go first. The space used is shown under Other and Status.</li>

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 (build 16) – 2026-11-13
+- New screenshots in the README, the guide and the in-app guide, with realistic (AI-generated) camera images and the current interface. The images are now JPEG, which keeps the download small.
+
+## 1.0 (build 15) – 2026-11-13
+- **Evaluate models** (Settings > Other > AI): one image from a chosen camera is analysed by every installed model with that camera's settings. Each model is shown with the image and AI boxes, time per image, load time, CPU or GPU, what it found and whether it would have alarmed, fastest first. Optional comparison of CPU and GPU. *Use this model* selects it. Alarms carry on as usual meanwhile.
+- After changing the AI model, *Loading model… (the first time can take up to a minute)* is shown next to Save.
+- Calibration is marked *experimental*.
+- **Overview:** the layout "1 camera" is now just "1"; the help text is folded under *Help*; **LIVE** is on the same row as the date and time; if the buttons do not fit on one row, <! and !> get a row of their own.
+
 ## 0.8 (build 14) – 2026-11-12
 - **Overview:**
   - Opens as the start page.

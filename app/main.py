@@ -25,6 +25,7 @@ from .config import (CAPTURE_DIR, COMMON_TYPES, DEFAULT_MODEL, GITHUB_REPO, MODE
 from .detector import COCO as COCO_TYPES
 from .detector import Detector
 from .engine import Engine
+from .evaluate import ModelEvaluator
 from .filters import draw
 from .i18n import tr
 from .modes import ModeManager, SPECIAL as SPECIAL_MODES
@@ -796,6 +797,39 @@ async def camera_test(name: str, request: Request, body: dict = Body(default={})
         raise HTTPException(502, safe_error(e))
     return {"ms": ms, "width": img.size[0], "height": img.size[1], "detections": dets,
             "alarm": bool(valid), "image": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}
+
+
+# ------------------------------------------------------------------ utvärdera modeller
+
+evaluator = ModelEvaluator(config, engine, (MODEL_DIR, USER_MODEL_DIR))
+
+
+@app.post("/api/models/evaluate")
+async def models_evaluate(request: Request, body: dict = Body(default={})):
+    """Tar en bild från kameran och låter varje installerad modell analysera den (i bakgrunden)."""
+    require(request)
+    cam = deepcopy(cam_or_404(str(body.get("camera") or "")))
+    devices = ["CPU", "GPU"] if body.get("compare_devices") else [config.get("detector", "device") or "AUTO"]
+    if evaluator.running:
+        raise HTTPException(409, tr("En utvärdering pågår redan"))
+    try:
+        job = await evaluator.start(cam, devices)
+    except Exception as e:
+        raise HTTPException(502, safe_error(e))
+    return {k: v for k, v in job.items() if k != "results"}
+
+
+@app.get("/api/models/evaluate")
+async def models_evaluate_status(request: Request, since: int = 0):
+    """Status och resultat. since = antal resultat klienten redan har (bilderna skickas bara en gång)."""
+    require(request)
+    job = dict(evaluator.status())
+    if "results" in job:
+        job["results"] = job["results"][max(0, since):]
+        job["since"] = max(0, since)
+        if since:
+            job.pop("image", None)
+    return job
 
 
 # ------------------------------------------------------------------ rörelsedetektering i Surveillance Station

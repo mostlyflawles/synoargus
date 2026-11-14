@@ -405,6 +405,7 @@ async def state(request: Request):
         "logged_in": bool(ok), "user": user if ok else None,
         "mode": modes.info() if ok else None,
         "priority": _priority() if ok else None,
+        "evaluating": evaluator.running if ok else False,
         "watch": watch.running() if ok else None,
         "dsm_login": a.get("dsm_login", True), "unlocked": unlocked(),
         "sso": bool(a["sso"].get("enabled") and a["sso"].get("issuer") and a["sso"].get("client_id")),
@@ -987,26 +988,35 @@ async def live_ws(ws: WebSocket, cam: str = ""):
     try:
         async with websockets.connect(f"{streams_mod.WS}/api/ws?src={name}", max_size=None,
                                       open_timeout=10, ping_interval=None) as up:
+            # Webbläsaren eller go2rtc kan stänga när som helst (byte av flik, layout …). Det är normalt och
+            # ska inte ge felutskrifter: båda riktningarna avslutas tyst och den andra stoppas.
             async def down():
-                async for msg in up:
-                    if isinstance(msg, bytes):
-                        await ws.send_bytes(msg)
-                    else:
-                        await ws.send_text(msg)
+                try:
+                    async for msg in up:
+                        if isinstance(msg, bytes):
+                            await ws.send_bytes(msg)
+                        else:
+                            await ws.send_text(msg)
+                except Exception:
+                    pass
 
             async def upstream():
-                while True:
-                    m = await ws.receive()
-                    if m.get("type") == "websocket.disconnect":
-                        return
-                    if m.get("text") is not None:
-                        await up.send(m["text"])
-                    elif m.get("bytes") is not None:
-                        await up.send(m["bytes"])
+                try:
+                    while True:
+                        m = await ws.receive()
+                        if m.get("type") == "websocket.disconnect":
+                            return
+                        if m.get("text") is not None:
+                            await up.send(m["text"])
+                        elif m.get("bytes") is not None:
+                            await up.send(m["bytes"])
+                except Exception:
+                    pass
             tasks = [asyncio.create_task(down()), asyncio.create_task(upstream())]
             _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)   # vänta tills inget mer skickas
     except Exception as e:
         log.debug("Liveström %s: %s", cam, streams_mod.mask(e))
     LIVE_SOCKETS.discard(ws)
@@ -1134,6 +1144,15 @@ def _iso(ts):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts else None
 engine.dispatcher = dispatcher
 watch = watch_mod.WatchManager(config, engine, ss)
+
+
+def _evaluation_pause(on):
+    engine.paused = "evaluation" if on else None
+    watch.paused = "evaluation" if on else None
+    log.info("Utvärdering av modeller: larm och bevakning %s", "pausade" if on else "igång igen")
+
+
+evaluator.on_pause = _evaluation_pause
 
 
 @app.api_route("/api/notify", methods=["GET", "POST"])
@@ -1634,7 +1653,7 @@ async def status(request: Request):
     for name in (config.get("cameras") or {}):
         st = engine.state.get(name)
         cams[name] = {"busy": st.busy, "last": st.last_result, "last_alarm": st.last_alarm or None} if st else {}
-    return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30],
+    return {"detector": detector.status(), "cameras": cams, "recent": engine.recent[:30], "paused": engine.paused,
             "update": _update["data"], "mode": modes.info(), "priority": _priority(),
             "watch": {k: v for k, v in watch.status().items() if k != "log"}, "storage": await _usage(),
             **storage.stats()}

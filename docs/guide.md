@@ -351,6 +351,9 @@ The **Overview** tab shows all cameras at once, much like Multi View in Surveill
 - **Tap a camera** for full screen. Sound on at once is a setting (Settings > Other > Overview). **Zoom** by pinching,
   with + / −, or by double-tapping; drag to move the picture, ⟲ resets.
 - **Tap the date and time** to choose a point in time to play from.
+- During playback all tiles follow **one shared clock**: they start together when all have loaded (at most 5 s), and a
+  tile that falls out of step plays slightly faster or slower until it has caught up. (Streams from Surveillance Station
+  cannot be seeked in, so the speed is adjusted instead.)
 - Where there is no recording, SynoArgus's own image from the event is shown instead.
 - **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min and **!>** next event
   (after the last one: live); if they do not fit on one row, <! and !> get a row of their own. An event is played from
@@ -440,12 +443,24 @@ If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS c
 Settings > Other > AI > **Evaluate models**: choose a camera and press the button. SynoArgus takes **one** image and
 lets every installed model analyse it with that camera's current settings (types, minimum confidence, zones, minimum
 size). Each model gets a card with the image and its AI boxes, the time per image (median of three runs after a
-warm-up), the load time, CPU or GPU, what it found and whether it would have alarmed – fastest first. *Compare CPU and
-GPU* runs every model on both. *Use this model* selects it; press Save to start using it.
+warm-up), the load time, CPU or GPU, what it found and whether it would have alarmed, sorted by model name. *Compare
+CPU and GPU* runs every model on both. *Use this model* selects it; press Save to start using it. Evaluate in different
+lighting conditions.
 
-Alarms carry on with the current model while it runs, but the NAS is slower. Each model is compiled once during the
-evaluation and kept in the cache, so switching to it afterwards is quick. Otherwise, the first time a model is loaded
-on the GPU can take up to a minute – the page says so next to Save.
+**★ recommended** marks the best balance: among the models that found what the camera looks for, and that are no more
+than twice as slow as the fastest of them (at least 500 ms allowed), the most confident one; on a tie, the faster. If no
+model found anything there is nothing to compare and no mark.
+
+**Alarms and watches are paused** while it runs, so all power goes to the evaluation; the header shows it, and both
+start again automatically, also if something fails. Alarms that arrive meanwhile are not analysed but saved as
+*Skipped* under Events (with *Show also without alarm*).
+
+Each model is compiled once during the evaluation and kept in the cache, so switching to it afterwards is quick.
+Otherwise, the first time a model is loaded on the GPU can take up to a minute – the page says so next to Save.
+
+**⚠ next to CPU**: the GPU cannot run that model – for example YOLO26 on older Intel graphics (HD 500), where the GPU
+compiler fails after about 35 s. SynoArgus remembers it (`data/gpu_unsupported.json`) and goes straight to the CPU next
+time. A new OpenVINO version or a changed model file gives the GPU a new try; delete the file to retry by hand.
 
 ### Adding models
 

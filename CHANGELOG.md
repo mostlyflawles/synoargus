@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1 (build 17) – 2026-11-14
+- **Evaluate models:**
+  - Alarms and watches are paused while it runs, so all power goes to the evaluation. The header shows it; both start again automatically, also after an error. Alarms meanwhile are saved as *Skipped* under Events.
+  - Results are sorted by model name. **★ recommended** marks the best balance of confidence and speed (or says there is nothing to compare when no model found anything).
+  - ⚠ is explained: the GPU cannot run that model, so it runs on the CPU.
+  - New text: evaluate in different lighting conditions. "Recommended" removed from the model list.
+- **Models the GPU cannot run are remembered** (e.g. YOLO26 on Intel HD 500): the next load goes straight to the CPU instead of spending ~35 s on a failing GPU compile. A new OpenVINO version or model file gives a new try.
+- **Overview:** recordings are played on one shared clock – all tiles start together when they have loaded and are kept in step.
+- **Time zone** is chosen from a list (grouped by region, this browser's zone first).
+- Fixed: go2rtc answered *HTTP 400 yaml: line 1: did not find expected key* for every stream at start (the stream still worked). The config file is written in a form go2rtc can update, and a stream that exists is no longer reported as an error.
+- Fixed: error tracebacks in the log when a live stream was closed by the browser.
+
 ## 1.0.1 (build 16) – 2026-11-13
 - New screenshots in the README, the guide and the in-app guide, with realistic (AI-generated) camera images and the current interface. The images are now JPEG, which keeps the download small.
 

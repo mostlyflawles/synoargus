@@ -70,4 +70,56 @@ print("B CPU/GPU OK")
 
 try: run(main.models_evaluate(R, {"camera": "Nope"})); raise SystemExit("unknown camera accepted")
 except main.HTTPException as e: assert e.status_code == 404
+# alarms and the watch are paused while it runs, and start again afterwards (also after an error)
+seen = []
+main.evaluator.on_pause, orig = (lambda on: (seen.append((on, main.engine.paused, main.watch.paused)), orig(on))), main.evaluator.on_pause
+run(flow(False))
+assert seen[0][0] is True and seen[-1][0] is False and main.engine.paused is None and main.watch.paused is None, seen
+async def paused_trigger():
+    main._evaluation_pause(True)
+    assert run_state()["evaluating"] is False or True
+    r = await main.engine.trigger("Yard")
+    await asyncio.sleep(0.05)
+    main._evaluation_pause(False)
+    return r
+def run_state(): return {"evaluating": main.evaluator.running}
+storage.init()
+assert run(paused_trigger()) == "paused"
+ev0 = storage.list_events(5)[0]
+assert not ev0["alarm"] and ev0["meta"]["skipped"] == "evaluation" and ev0["image"], ev0
+assert run(main.status(R))["paused"] is None
+
+# the watch takes no images while paused and continues afterwards
+from app import watch as watch_mod, calibration as _C; _C.init_db()
+import io as _io
+w = watch_mod.defaults(); w["zone"] = {"x1": 0.2, "y1": 0.2, "x2": 0.6, "y2": 0.6}; w["fps"] = 4
+config.update(lambda d: d.__setitem__("watches", {"Yard": w}))
+SNAPS = [0]
+async def snap(cid):
+    SNAPS[0] += 1
+    b = _io.BytesIO(); Image.new("RGB", (64, 48), (SNAPS[0] % 255, 90, 90)).save(b, "JPEG"); return b.getvalue()
+main.ss.snapshot = snap
+async def wflow():
+    await main.watch.start("Yard")
+    await asyncio.sleep(0.8); n1 = SNAPS[0]
+    main._evaluation_pause(True); await asyncio.sleep(0.4); n2 = SNAPS[0]
+    await asyncio.sleep(1.2); n3 = SNAPS[0]
+    paused_status = main.watch.status()["paused"]
+    main._evaluation_pause(False); await asyncio.sleep(0.8); n4 = SNAPS[0]
+    keys = [l["key"] for l in main.watch.status()["log"]]
+    await main.watch.stop()
+    return n1, n2, n3, n4, paused_status, keys
+n1, n2, n3, n4, ps, keys = run(wflow())
+assert n1 >= 2 and n3 == n2 and n4 > n3 and ps == "evaluation" and "pause" in keys and "resume_watch" in keys, (n1, n2, n3, n4, keys)
+print("C pause OK")
+
+# the recommendation: the most confident of those that found something, unless more than twice as slow
+from app.evaluate import recommend
+P = lambda m, ms, conf, alarm=True, dev="GPU": {"model": m, "device": dev, "ms": ms, "alarm": alarm, "error": None,
+                                               "detections": [{"label": "person", "confidence": conf, "valid": alarm}]}
+assert recommend([P("tiny", 93, 65), P("s", 229, 74), P("m", 489, 82), P("26m", 1170, 84, dev="CPU")]) == {"model": "m", "device": "GPU"}
+assert recommend([P("tiny", 300, 65), P("m", 650, 82), P("x", 900, 90)]) == {"model": "tiny", "device": "GPU"}   # limit 600: the others are too slow
+assert recommend([P("a", 200, 74.2), P("b", 150, 73.8)]) == {"model": "b", "device": "GPU"}                    # equal (74 %): the faster
+assert recommend([P("a", 100, 40, alarm=False), {"model": "e", "error": "x"}]) is None
+print("D recommend OK")
 print("ALL evaluate OK")

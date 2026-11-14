@@ -46,8 +46,9 @@ class RecPlayer {
         .sort((a, b) => Math.abs(a.ts - T) - Math.abs(b.ts - T))[0];
       if (ev) { this.img.src = `/captures/${encodeURIComponent(ev.image).replace(/%2F/g, '/')}`; this.img.hidden = false; this.msg(''); this.badge(t('Bild från händelsen – ingen inspelning')); }
       else { this.img.hidden = true; this.badge(''); this.msg(r.detail || t('Ingen inspelning')); }
+      this.state = 'none';
       if (r.next && r.next - T <= 60 && this.O.playing)        // nästa inspelning börjar snart: fortsätt där
-        this.wait = setTimeout(() => { if (gen === this.gen) this.play(r.next); }, Math.max(0, (r.next - T) * 1000));
+        this.wait = setTimeout(() => { if (gen === this.gen) this.play(r.next); }, Math.max(0, (r.next - this.O.master()) * 1000));
       return;
     }
     this.img.hidden = true; this.badge(''); this.msg(''); v.hidden = false;
@@ -55,8 +56,10 @@ class RecPlayer {
     v.dataset.t0 = T;
     v.onended = () => { if (gen === this.gen) this.continue(); };
     v.onerror = () => { if (gen === this.gen) this.stuck(); };
+    // startar inte själv: den gemensamma klockan startar alla rutor samtidigt och håller dem i takt (align)
+    this.state = 'loading';
+    v.oncanplay = () => { if (gen !== this.gen) return; this.state = 'ready'; this.align(); };
     v.src = `/api/overview/recording?cam=${enc}&t=${T}&length=${REC_CHUNK}`;
-    if (this.O.playing) v.play().catch(() => { /* */ });
     // vakt: står videon still trots att den ska spela laddas den om från samma ställe
     let last = -1, since = Date.now();
     this.retry = retry;
@@ -80,6 +83,21 @@ class RecPlayer {
     if (this.next) return this.play(this.next);                  // inspelningen är slut: nästa
     if (this.ongoing) return again(r1(at), 0);                   // pågår fortfarande: vänta på mer
     this.play(r1(at));                                           // visar "Ingen inspelning" / händelsens bild
+  }
+  /* håll rutan i takt med den gemensamma klockan. Strömmen från Surveillance Station går inte att spola i, så
+     rutan justeras med uppspelningshastigheten (eller väntar/laddas om vid stora skillnader). */
+  align() {
+    const O = this.O, v = this.video;
+    if (!O.clk || v.hidden || !v.dataset.t0 || this.state !== 'ready' || v.ended) return;
+    const exp = O.master() - Number(v.dataset.t0), diff = v.currentTime - exp;   // > 0: rutan ligger före
+    if (!O.clk.run) { if (!v.paused) v.pause(); v.playbackRate = 1; return; }
+    if (exp < -0.3 || diff > 2) { if (!v.paused) v.pause(); return; }             // vänta in klockan
+    if (diff < -8 && !this.reloading) {                                          // långt efter: ladda om där klockan är
+      this.reloading = true; setTimeout(() => { this.reloading = false; }, 15000);
+      return this.play(Math.round(O.master() * 10) / 10);
+    }
+    v.playbackRate = Math.abs(diff) < 0.25 ? 1 : diff > 0 ? 0.8 : diff < -1 ? 2 : 1.3;
+    if (v.paused) v.play().catch(() => { /* */ });
   }
   stuck() {
     const v = this.video, at = Number(v.dataset.t0 || this.T) + (v.currentTime || 0);
@@ -295,11 +313,28 @@ async function renderOverview() {
     const d = new Date(ts * 1000), loc = S.lang === 'en' ? 'en-GB' : 'sv-SE';
     return d.toLocaleDateString(loc, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' + d.toLocaleTimeString(loc);
   };
+  // Gemensam klocka för uppspelning: alla rutor startar när alla har laddat (högst 5 s) och justeras mot den.
+  O.master = () => !O.clk ? O.T : O.clk.run ? O.clk.T + (performance.now() - O.clk.at) / 1000 : O.clk.T;
+  function startSync() {
+    O.clk = null; clearInterval(O.syncWait);
+    const t0 = performance.now();
+    O.syncWait = setInterval(() => {
+      const ps = recPlayers();
+      if (!O.alive) return clearInterval(O.syncWait);
+      if (ps.every(p => p.state === 'ready' || p.state === 'none') || performance.now() - t0 > 5000) {
+        clearInterval(O.syncWait);
+        O.clk = { T: O.T, at: performance.now(), run: O.playing };
+        ps.forEach(p => p.align());
+      }
+    }, 150);
+  }
+  function setRun(run) {
+    if (O.clk) O.clk = { T: O.master(), at: performance.now(), run };
+    recPlayers().forEach(p => p.align());
+  }
   function current() {
     if (O.mode === 'live') return O.frozenAt || now();
-    const v = $$('.ov-tile video').find(x => !x.hidden && x.dataset.t0 && x.readyState > 0);
-    if (v) return Number(v.dataset.t0) + v.currentTime;
-    const p = recPlayers().find(x => x.T); return p ? p.T : O.T;
+    return O.master();
   }
   function seek(T, keepPlaying = true) {
     if (!O.alive || !$('#ovLive')) return;
@@ -308,11 +343,12 @@ async function renderOverview() {
     $('#ovLive').classList.remove('primary'); $('#ovPause').textContent = O.playing ? '⏸' : '▶';
     stopTiles();
     $$('.ov-tile[data-cam]', main).forEach(tile => startTile(tile, tile.dataset.cam, true));
+    startSync();
     scrollTo(O.T);
   }
   function goLive() {
     if (!O.alive || !$('#ovLive')) return;
-    O.mode = 'live'; O.T = null; O.follow = true; O.playing = true; O.frozenAt = null;
+    O.mode = 'live'; O.T = null; O.follow = true; O.playing = true; O.frozenAt = null; O.clk = null; clearInterval(O.syncWait);
     $('#ovLive').classList.add('primary'); $('#ovPause').textContent = '⏸';
     drawGrid(); scrollTo(now());
   }
@@ -340,7 +376,8 @@ async function renderOverview() {
         return;
       }
       O.playing = !O.playing; $('#ovPause').textContent = O.playing ? '⏸' : '▶';
-      recPlayers().forEach(p => { if (O.playing) p.resume(); else p.video.pause(); });
+      setRun(O.playing);
+      if (O.playing) recPlayers().forEach(p => { if (p.isStuck || p.video.error) p.resume(); });
       return;
     }
     seek(current() + Number(c));
@@ -418,7 +455,7 @@ async function renderOverview() {
     const zoom = new Zoom(tile.querySelector('.ov-media'), tile.querySelector('.ov-zoom'));
     $('#ovZin').onclick = () => zoom.step(1.5); $('#ovZout').onclick = () => zoom.step(1 / 1.5); $('#ovZ0').onclick = () => zoom.reset();
     const sound = S.cfg?.overview?.sound !== false;
-    if (T) { O.T = T; const p = new RecPlayer(tile, cam, O); O.players.push(p); p.play(T); } else startTile(tile, cam, !sound);
+    if (T) { O.T = T; const p = new RecPlayer(tile, cam, O); O.players.push(p); p.play(T); startSync(); } else startTile(tile, cam, !sound);
     video.muted = !sound;            // trycket på kameran räknas som tillåtelse att spela ljud
     const sb = ov.querySelector('#ovSound');
     video.play().catch(() => { if (!ov.isConnected) return; video.muted = true; sb.classList.remove('primary'); video.play().catch(() => {}); });
@@ -494,6 +531,7 @@ async function renderOverview() {
   // ---------------------------------------------------------------- klocka
   O.clock = setInterval(() => {
     if (!O.alive) return;
+    if (O.mode === 'rec') recPlayers().forEach(p => p.align());      // håll rutorna i takt
     const ts = current();
     if (!userScroll) { $('#ovTime').textContent = fmt(ts); if (O.mode === 'live' || O.playing) scrollTo(ts); }
     const ft = document.getElementById('ovFullTime'); if (ft) ft.textContent = fmt(ts);

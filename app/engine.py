@@ -33,6 +33,7 @@ class Engine:
         self.detector = detector
         self.state = {}
         self.recent = []  # senaste meddelanden för statussidan
+        self.paused = None  # t.ex. "evaluation": larm analyseras inte (all kraft till Utvärdera modeller)
         self.modes = None  # ModeManager, sätts i main
         self.on_trigger = None  # anropas vid varje reaktion (kalibreringen)
         self.dispatcher = None  # notifieringar direkt / på begäran (sätts i main)
@@ -88,6 +89,8 @@ class Engine:
         entry["result"] = self._check(cam, st)
         if self.on_trigger:
             asyncio.create_task(self.on_trigger(name, cam), context=contextvars.Context())
+        if entry["result"] == "paused":       # spara att något hände, utan analys
+            asyncio.create_task(self._skipped(cam), context=contextvars.Context())
         if entry["result"] == "accepted":
             st.busy = True
             self._note(name, tr("Rörelse: analyserar"))
@@ -96,7 +99,8 @@ class Engine:
             if entry["result"] == "mode" and self.modes:
                 entry["mode"] = self.modes.name(self.modes.current())
             why = {"disabled": tr("kameran avstängd"), "cooldown": tr("tyst period"), "delay": tr("för tätt"),
-                   "busy": tr("upptagen"), "mode": tr("läge {m}", m=entry.get("mode", ""))}.get(entry["result"],
+                   "busy": tr("upptagen"), "paused": tr("utvärdering av modeller pågår"),
+                   "mode": tr("läge {m}", m=entry.get("mode", ""))}.get(entry["result"],
                                                                                               entry["result"])
             self._note(name, tr("Rörelse: ignoreras ({why})", why=why))
         return entry["result"]
@@ -104,6 +108,8 @@ class Engine:
     def _check(self, cam, st):
         if not cam.get("enabled", True):
             return "disabled"
+        if self.paused:
+            return "paused"
         modes = cam.get("modes") or []
         if modes and self.modes and self.modes.current() not in modes:
             return "mode"
@@ -115,6 +121,17 @@ class Engine:
         if now - st.last_alarm < (self.cfg.cam_setting(cam, "cooldown_s") or 0):
             return "cooldown"
         return "accepted"
+
+    async def _skipped(self, cam):
+        """Larm under paus: bara en bild sparas (syns under Händelser med Visa även utan larm)."""
+        try:
+            img = await self.grab(cam)
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=80)
+            eid, _ = storage.save_event(cam["name"], False, [], [], buf.getvalue(), 0)
+            storage.set_meta(eid, {"skipped": self.paused or "paused"})
+        except Exception as e:
+            log.debug("Överhoppat larm %s: %s", cam["name"], e)
 
     def triggers(self, name, since=0):
         st = self.state.get(name)

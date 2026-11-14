@@ -594,6 +594,7 @@ class WatchManager:
         self.log = deque(maxlen=100)
         self.calib_active = lambda: None    # sätts i main: kameran som kalibreras, annars None
         self._task = None
+        self.paused = None                  # t.ex. "evaluation": bevakningen tar inga bilder under tiden
 
     # ---------------------------------------------------------------- inställningar
     def get(self, camera):
@@ -607,7 +608,7 @@ class WatchManager:
         out = {"active": a["camera"] if a else None, "log": list(self.log)[:60]}
         if a:
             core = a.get("core")
-            out.update(since=a["started"], elapsed=round(time.time() - a["started"]), test=a["test"],
+            out.update(since=a["started"], elapsed=round(time.time() - a["started"]), test=a["test"], paused=self.paused,
                        source=a["source"], fps=round(a.get("fps", 0), 1), ms=round(a.get("ms", 0)),
                        snapshot_ms=round(a.get("snap_ms", 0)), error=a.get("error"),
                        duplicates=round(100 * a.get("dups", 0) / max(1, a.get("got", 0))),
@@ -667,6 +668,17 @@ class WatchManager:
                 if not w or not w.get("zone") or not cam:
                     await self.stop("inställningarna saknas")
                     return
+                if self.paused:
+                    # Pausad (Utvärdera modeller): inga bilder. Mätningen börjar om efteråt, läget i zonen behålls,
+                    # så att pausen inte ser ut som att någon gick eller kom.
+                    if not a.get("paused"):
+                        a["paused"] = True
+                        self.reload(camera)
+                        self._note(camera, "pause", tr("Bevakningen pausad (utvärdering av modeller)"))
+                    await asyncio.sleep(0.5)
+                    continue
+                if a.pop("paused", False):
+                    self._note(camera, "resume_watch", tr("Bevakningen fortsätter"))
                 t0 = time.time()
                 try:
                     cam_id = cam.get("ss_id")

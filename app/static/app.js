@@ -24,11 +24,16 @@ const EN = {
   'Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.': 'No filters: this notification receives every alarm from every camera in every mode.',
   'väntar på anrop': 'waiting for a call', 'skickad på begäran': 'sent on request',
   'Utvärdera modeller': 'Evaluate models', 'Jämför processor och grafikkrets': 'Compare CPU and GPU',
-  'Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larmen fortsätter som vanligt, men NAS:en blir långsammare medan det pågår.': 'Takes one image from the camera and lets every installed model analyse it with the camera\'s settings. Alarms carry on as usual, but the NAS is slower while it runs.',
+  'Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larm och bevakning pausas medan det pågår. Utvärdera gärna under olika ljusförhållanden.': 'Takes one image from the camera and lets every installed model analyse it with the camera\'s settings. Alarms and watches are paused while it runs. Evaluate in different lighting conditions too.',
+  'Utvärderar – larm och bevakning pausade': 'Evaluating – alarms and watches paused', 'Den här webbläsarens tidszon': 'This browser\'s time zone', 'rekommenderas': 'recommended',
+  'Bäst avvägning mellan säkerhet och tid i den här bilden': 'Best balance of confidence and time in this image',
+  'Inget att jämföra – utvärdera när någon syns i bilden.': 'Nothing to compare – evaluate when someone is in the picture.',
+  'Grafikkretsen klarar inte den här modellen – den körs på processorn.': 'The GPU cannot run this model – it runs on the CPU.',
+  'Analyserar med {m} ({n} av {tot}) … Larm och bevakning är pausade.': 'Analysing with {m} ({n} of {tot}) … Alarms and watches are paused.',
+  '{cam}, bild tagen {when}. Tryck på en bild för att förstora.': '{cam}, image taken at {when}. Tap an image to enlarge.',
   'används nu': 'in use', 'per bild': 'per image', 'laddning': 'load', 'första bilden': 'first image', 'Inget hittat': 'Nothing found',
   'Skulle ha larmat': 'Would have alarmed', 'Skulle inte ha larmat': 'Would not have alarmed', 'Använd den här modellen': 'Use this model',
   'Analyserar med {m} ({n} av {tot}) …': 'Analysing with {m} ({n} of {tot}) …', 'Tar en bild…': 'Taking an image…',
-  '{cam}, bild tagen {when}. Snabbast först; tryck på en bild för att förstora.': '{cam}, image taken at {when}. Fastest first; tap an image to enlarge.',
   'Vald – tryck Spara för att börja använda den': 'Selected – press Save to start using it',
   'Laddar modell… (första gången kan ta upp till en minut)': 'Loading model… (the first time can take up to a minute)',
   'Ytterligare inställningar': 'More settings', 'Fordon': 'Vehicles', 'Djur': 'Animals', 'Väskor och bagage': 'Bags and luggage',
@@ -150,8 +155,8 @@ const EN = {
   'Regeln {n} skapades {d}': 'The rule {n} was created {d}', 'men kan inte bekräftas.': 'but cannot be confirmed.',
   'Kopiera rådata': 'Copy raw data', 'Regeln {n} reagerar inte på rörelse för den här kameran.': 'The rule {n} does not react to motion for this camera.', 'Regeln {n} är inte aktiv i Home Mode. SynoArgus styr själv via lägen, så regeln bör alltid vara aktiv.': 'The rule {n} is not active in Home Mode. SynoArgus decides via modes, so the rule should always be active.',
   'Rätta regeln': 'Fix the rule', 'Regeln skapades men kan inte bekräftas': 'The rule was created but cannot be confirmed', 'Regeln uppdaterades': 'The rule was updated',
-  'Börja med en s-modell. Jämför med Ta bild och analysera under Kameror – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.': 'Start with an s model. Compare using Take snapshot and analyse under Cameras – under 1 s per image is good. Own models (e.g. YOLO26) are added with the converter, see the README.',
-  'snabbast, lägst träffsäkerhet': 'fastest, lowest accuracy', 'noggrannast, 2–3 ggr långsammare': 'most accurate, 2–3× slower', 'balanserad (rekommenderas)': 'balanced (recommended)',
+  'Jämför modellerna med Utvärdera modeller nedan – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.': 'Compare the models with Evaluate models below – under 1 s per image is good. Own models (e.g. YOLO26) are added with the converter, see the README.',
+  'snabbast, lägst träffsäkerhet': 'fastest, lowest accuracy', 'noggrannast, 2–3 ggr långsammare': 'most accurate, 2–3× slower', 'balanserad': 'balanced',
   'mycket tung för en NAS': 'very heavy for a NAS', 'egen modell': 'own model',
   'Uppdatera i Container Manager: <b>Projekt</b> &gt; synoargus &gt; <b>Åtgärd</b> &gt; <b>Stoppa</b>, sedan <b>Åtgärd</b> &gt; <b>Bygg</b> (hämtar den nya imagen). Städa till sist under <b>Image</b> &gt; <b>Remove Unused Images</b>.': 'Update in Container Manager: <b>Project</b> &gt; synoargus &gt; <b>Action</b> &gt; <b>Stop</b>, then <b>Action</b> &gt; <b>Build</b> (pulls the new image). Finally clean up under <b>Image</b> &gt; <b>Remove Unused Images</b>.',
   'Aktiv i läge (inga valda = alla)': 'Active in mode (none selected = all)', 'Typer': 'Types', 'Bara i läge (inga valda = alla)': 'Only in mode (none selected = all)',
@@ -302,6 +307,7 @@ async function boot() {
   translateChrome();
   if (S.state.logged_in) { await loadConfig(); checkUpdateBadge(); }
   setPriority(S.state.priority?.until);
+  setEvalPill(S.state.evaluating);
   setWatchPill(S.state.watch);
   render();
 }
@@ -349,6 +355,19 @@ function tickPriority() {
   }
 }
 setInterval(tickPriority, 1000);
+
+/* ---------------------------------------------------------------- Utvärdera modeller pågår: larm pausade */
+let evalPillTimer = null;
+function setEvalPill(on) {
+  const pill = $('#evalPill'); if (!pill) return;
+  pill.hidden = !(on && S.state?.logged_in);
+  pill.innerHTML = `<span class="l">🔬 ${esc(t('Utvärderar – larm och bevakning pausade'))}</span><span class="s">🔬 ⏸</span>`;
+  pill.title = t('Utvärderar – larm och bevakning pausade');
+  clearTimeout(evalPillTimer);
+  if (on) evalPillTimer = setTimeout(async () => {
+    try { setEvalPill(!!(await api('/api/models/evaluate')).running); } catch (e) { setEvalPill(false); }
+  }, 3000);
+}
 
 function placeSubnav() { const h = $('header.top'); if (h) $('#subnav').style.top = h.offsetHeight + 'px'; }
 window.addEventListener('resize', placeSubnav);
@@ -495,7 +514,7 @@ async function renderEvents() {
         ${ev.image ? `<img loading="lazy" src="/captures/${esc(ev.image)}" alt="">` : ''}
         <div class="meta">
           <div class="row" style="justify-content:space-between"><strong>${esc(ev.camera)}</strong><span class="muted">${fmtTime(ev.ts)}</span></div>
-          <div>${ev.alarm ? ev.types.map(x => `<span class="tag">${esc(tname(x))}</span>`).join(' ') : `<span class="muted">${t('Inget av intresse')}</span>`}</div>
+          <div>${ev.alarm ? ev.types.map(x => `<span class="tag">${esc(tname(x))}</span>`).join(' ') : ev.meta?.skipped ? `<span class="tag">⏸ ${t('Hoppades över – utvärdering av modeller pågick')}</span>` : `<span class="muted">${t('Inget av intresse')}</span>`}</div>
           <div class="muted small">${[ev.ms ? ev.ms + ' ms' : '', ev.notified?.length ? ev.notified.map(n => n.pending ? `<span class="muted" title="${esc(t('väntar på anrop'))}">${esc(n.name)} ⏳</span>` : `<span class="${n.ok ? 'okc' : 'err'}" title="${esc(n.error || (n.requested ? t('skickad på begäran') : ''))}">${esc(n.name)} ${n.ok ? '✓' : '✗'}</span>`).join(' ') : ''].filter(Boolean).join(' · ')}</div>
         </div>
       </div>`).join(''));
@@ -1159,7 +1178,7 @@ function modelHint(name) {
   const n = name.toLowerCase();
   if (/(tiny|nano|[^a-z]n$|\dn$)/.test(n)) return t('snabbast, lägst träffsäkerhet');
   if (/(\dm$|_m$|medium)/.test(n)) return t('noggrannast, 2–3 ggr långsammare');
-  if (/(\ds$|_s$|small)/.test(n)) return t('balanserad (rekommenderas)');
+  if (/(\ds$|_s$|small)/.test(n)) return t('balanserad');
   if (/(\dl$|_l$|\dx$|_x$)/.test(n)) return t('mycket tung för en NAS');
   return t('egen modell');
 }
@@ -1168,14 +1187,23 @@ function renderSettings() {
   const cams = Object.keys(c.cameras || {});
   let zones = [];
   try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) { zones = ['UTC', 'Europe/Stockholm', 'Europe/London', 'America/New_York']; }
+  if (!zones.includes('UTC')) zones = ['UTC', ...zones];
+  const curTz = c.timezone || 'UTC';
+  if (!zones.includes(curTz)) zones = [curTz, ...zones];
+  let myTz = ''; try { myTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* */ }
+  // lista grupperad per världsdel; webbläsarens tidszon överst
+  const tzGroups = {};
+  zones.forEach(z => { const g = z.includes('/') ? z.split('/')[0] : 'UTC'; (tzGroups[g] = tzGroups[g] || []).push(z); });
+  const tzOpt = z => `<option value="${esc(z)}" ${z === curTz ? 'selected' : ''}>${esc(z.replace(/_/g, ' '))}</option>`;
+  const tzSelect = (myTz && zones.includes(myTz) ? `<optgroup label="${esc(t('Den här webbläsarens tidszon'))}"><option value="${esc(myTz)}" ${myTz === curTz ? 'selected' : ''}>${esc(myTz.replace(/_/g, ' '))}</option></optgroup>` : '')
+    + Object.keys(tzGroups).sort().map(g => `<optgroup label="${esc(g)}">${tzGroups[g].filter(z => z !== myTz).map(tzOpt).join('')}</optgroup>`).join('');
   const models = S.models.length ? S.models : [{ name: c.detector.model, source: 'builtin' }];
   main.innerHTML = `
   <h2>${t('Övrigt')}</h2>
   <form id="setForm">
   <div class="panel"><h3>${t('Språk och tidszon')}</h3><div class="grid">
     <label class="f">${t('Språk')}<select name="language"><option value="sv" ${S.lang === 'sv' ? 'selected' : ''}>Svenska</option><option value="en" ${S.lang === 'en' ? 'selected' : ''}>English</option></select></label>
-    <label class="f">${t('Tidszon')}<input name="timezone" list="tzList" value="${esc(c.timezone || 'UTC')}"><span class="hint">${t('Används för klockslag i larm och filnamn.')}</span></label>
-    <datalist id="tzList">${zones.map(z => `<option value="${esc(z)}">`).join('')}</datalist>
+    <label class="f">${t('Tidszon')}<select name="timezone">${tzSelect}</select><span class="hint">${t('Används för klockslag i larm och filnamn.')}</span></label>
   </div></div>
 
   <div class="panel"><h3>Surveillance Station</h3><div class="grid">
@@ -1187,12 +1215,12 @@ function renderSettings() {
   </div></div>
 
   <div class="panel"><h3>${t('AI')}</h3><div class="grid">
-    <label class="f">${t('Modell')}<select name="det.model">${models.map(m => `<option value="${esc(m.name)}" ${c.detector.model === m.name ? 'selected' : ''}>${esc(m.name)} – ${modelHint(m.name)} (${m.source === 'user' ? t('egen') : t('inbyggd')})</option>`).join('')}</select><span class="hint">${t('Börja med en s-modell. Jämför med Ta bild och analysera under Kameror – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.')}</span></label>
+    <label class="f">${t('Modell')}<select name="det.model">${models.map(m => `<option value="${esc(m.name)}" ${c.detector.model === m.name ? 'selected' : ''}>${esc(m.name)} – ${modelHint(m.name)} (${m.source === 'user' ? t('egen') : t('inbyggd')})</option>`).join('')}</select><span class="hint">${t('Jämför modellerna med Utvärdera modeller nedan – under 1 s per bild är bra. Egna modeller (t.ex. YOLO26) läggs till med konverteraren, se README.')}</span></label>
     <label class="f">${t('Beräkning')}<select name="det.device">${[['AUTO', t('Automatiskt (grafikkrets om den finns)')], ['GPU', t('Grafikkrets')], ['CPU', t('Processor')]].map(([v, l]) => `<option value="${v}" ${c.detector.device === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
   </div>
   <div class="evalbox">
     <h4>${t('Utvärdera modeller')}</h4>
-    <p class="hint">${t('Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larmen fortsätter som vanligt, men NAS:en blir långsammare medan det pågår.')}</p>
+    <p class="hint">${t('Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larm och bevakning pausas medan det pågår. Utvärdera gärna under olika ljusförhållanden.')}</p>
     <div class="row">
       <select id="evCam" data-nosave style="width:auto">${Object.keys(c.cameras || {}).map(n => `<option>${esc(n)}</option>`).join('')}</select>
       <label class="check"><input type="checkbox" id="evBoth" data-nosave> ${t('Jämför processor och grafikkrets')}</label>
@@ -1343,16 +1371,25 @@ function drawEvaluate() {
     const active = job.active && r.model === job.active.model && (!r.device || r.device === job.active.device);
     const hits = r.detections.filter(d => d.valid).map(d => `<b>${esc(tname(d.label))} ${Math.round(d.confidence)} %</b>`)
       .concat(r.detections.filter(d => !d.valid).map(d => `<span class="muted">${esc(tname(d.label))} ${Math.round(d.confidence)} % (${why[d.reason] || d.reason})</span>`));
-    return `<div class="evcard ${r.alarm ? 'alarm' : ''}">
+    const warn = r.fallback || (r.gpu_unsupported && r.wanted !== 'CPU');
+    const gpuNote = t('Grafikkretsen klarar inte den här modellen – den körs på processorn.');
+    return `<div class="evcard ${r.alarm ? 'alarm' : ''}" data-model="${esc(r.model)}" data-dev="${esc(r.device || '')}">
       ${r.image ? `<img class="shot" src="${r.image}" alt="">` : `<div class="evnoimg">${esc(r.error || '')}</div>`}
-      <div class="evbody"><div class="evhead"><b>${esc(r.model)}</b>${active ? `<span class="pill">${t('används nu')}</span>` : ''}</div>
+      <div class="evbody"><div class="evhead"><b>${esc(r.model)}</b><span class="evbadges">${active ? `<span class="pill">${t('används nu')}</span>` : ''}</span></div>
         ${r.error ? `<p class="err small">${esc(r.error)}</p>` : `
-        <div class="evstats"><span><b>${r.ms} ms</b> ${t('per bild')}</span><span>${devName(r.device)}${r.fallback ? ' ⚠' : ''}</span><span>${t('laddning')} ${r.load_s} s</span></div>
+        <div class="evstats"><span><b>${r.ms} ms</b> ${t('per bild')}</span><span>${devName(r.device)}${warn ? ` <span class="warnmark" title="${esc(gpuNote)}">⚠</span>` : ''}</span><span>${t('laddning')} ${r.load_s} s</span></div>
+        ${warn ? `<div class="small warn">${esc(gpuNote)}</div>` : ''}
         <div class="small muted">${t('första bilden')} ${r.first_ms} ms · ${r.size} px · ${esc(modelHint(r.model))}</div>
         <div class="evhits small">${hits.join(', ') || `<span class="muted">${t('Inget hittat')}</span>`}</div>
         <div class="small">${r.alarm ? '🔔 ' + t('Skulle ha larmat') : t('Skulle inte ha larmat')}</div>
         ${active ? '' : `<button type="button" class="btn" data-use="${esc(r.model)}" data-dev="${esc(r.wanted)}">${t('Använd den här modellen')}</button>`}`}
       </div></div>`;
+  };
+  const order = el => el.dataset.model + '\u0001' + el.dataset.dev;
+  const place = html => {           // efter modellens namn (och processor före grafikkrets)
+    const tmp = document.createElement('div'); tmp.innerHTML = html.trim(); const el = tmp.firstChild;
+    const after = [...$('#evGrid').children].find(x => order(x).localeCompare(order(el), 'sv') > 0);
+    $('#evGrid').insertBefore(el, after || null);
   };
   const poll = async () => {
     clearTimeout(E.timer);
@@ -1361,25 +1398,30 @@ function drawEvaluate() {
     try { job = await api(`/api/models/evaluate?since=${E.have}`); } catch (e) { $('#evProg').textContent = e.message; return; }
     if (!$('#evGrid') || !job.camera) return;
     if (E.have === 0) $('#evGrid').innerHTML = '';
-    (job.results || []).forEach(r => $('#evGrid').insertAdjacentHTML('beforeend', card(r, job)));
+    (job.results || []).forEach(r => place(card(r, job)));
     E.have += (job.results || []).length;
     $('#evStart').disabled = job.running;
+    setEvalPill(job.running);
     const when = new Date(job.started * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE', { hour: '2-digit', minute: '2-digit' });
-    $('#evProg').innerHTML = job.running
-      ? `<span class="spinner"></span> ${esc(t('Analyserar med {m} ({n} av {tot}) …', { m: job.current ? job.current.model + (job.current.device !== 'AUTO' ? ' / ' + devName(job.current.device) : '') : '', n: job.done + 1, tot: job.total }))}`
-      : esc(t('{cam}, bild tagen {when}. Snabbast först; tryck på en bild för att förstora.', { cam: job.camera, when })) + (job.error ? ` <span class="err">${esc(job.error)}</span>` : '');
-    if (!job.running) {          // sortera: snabbast först
-      const cards = [...$('#evGrid').children];
-      cards.sort((a, b) => (Number(a.querySelector('.evstats b')?.textContent.replace(/\D/g, '')) || 1e9) - (Number(b.querySelector('.evstats b')?.textContent.replace(/\D/g, '')) || 1e9));
-      cards.forEach(x => $('#evGrid').appendChild(x));
+    if (job.running) {
+      $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('Analyserar med {m} ({n} av {tot}) … Larm och bevakning är pausade.', { m: job.current ? job.current.model + (job.current.device !== 'AUTO' ? ' / ' + devName(job.current.device) : '') : '', n: job.done + 1, tot: job.total }))}`;
+      E.timer = setTimeout(poll, 1500);
+      return;
     }
-    if (job.running) E.timer = setTimeout(poll, 1500);
+    let text = t('{cam}, bild tagen {when}. Tryck på en bild för att förstora.', { cam: job.camera, when });
+    const rec = job.recommended;
+    $$('#evGrid .pill.rec').forEach(x => x.remove());
+    if (rec) {
+      const el = [...$('#evGrid').children].find(x => x.dataset.model === rec.model && (!rec.device || x.dataset.dev === rec.device));
+      if (el) el.querySelector('.evbadges').insertAdjacentHTML('afterbegin', `<span class="pill rec" title="${esc(t('Bäst avvägning mellan säkerhet och tid i den här bilden'))}">★ ${t('rekommenderas')}</span>`);
+    } else if ($('#evGrid').children.length) text += ' ' + t('Inget att jämföra – utvärdera när någon syns i bilden.');
+    $('#evProg').innerHTML = esc(text) + (job.error ? ` <span class="err">${esc(job.error)}</span>` : '');
   };
   stoppers.add(() => clearTimeout(E.timer));
   $('#evStart').onclick = async () => {
     $('#evStart').disabled = true; $('#evGrid').innerHTML = ''; E.have = 0;
     $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('Tar en bild…'))}`;
-    try { await api('/api/models/evaluate', { method: 'POST', body: { camera: $('#evCam').value, compare_devices: $('#evBoth').checked } }); poll(); }
+    try { await api('/api/models/evaluate', { method: 'POST', body: { camera: $('#evCam').value, compare_devices: $('#evBoth').checked } }); setEvalPill(true); poll(); }
     catch (e) { $('#evProg').textContent = e.message; $('#evStart').disabled = false; }
   };
   $('#evGrid').addEventListener('click', e => {

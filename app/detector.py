@@ -215,10 +215,60 @@ class Detector:
         self.size = 640
         self.error = None
         self.warning = None
+        self.gpu_skipped = False  # grafikkretsen begärdes men modellen klarar den inte
         self.last_ms = None
 
     def models(self):
         return available_models(*self.model_dirs)
+
+    # ---------------------------------------------------------------- modeller som grafikkretsen inte klarar
+    # T.ex. YOLO26 på Intel HD 500: kompileringen tar ~35 s och misslyckas varje gång. Det sparas så att nästa
+    # laddning går direkt till processorn. Gäller per modellfil och OpenVINO-version (ny drivrutin = nytt försök).
+    @staticmethod
+    def _gpu_file():
+        return os.path.join(os.environ.get("SYNOARGUS_DATA", "/data"), "gpu_unsupported.json")
+
+    @staticmethod
+    def _gpu_key(info, ov_version):
+        xml = (glob.glob(os.path.join(info["path"], "*.xml")) or [""])[0]
+        try:
+            st = os.stat(xml)
+            sig = f"{st.st_size}-{int(st.st_mtime)}"
+        except OSError:
+            sig = "?"
+        return f"{os.path.basename(info['path'].rstrip('/'))}|{sig}|{ov_version}"
+
+    def gpu_unsupported(self):
+        try:
+            with open(self._gpu_file()) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def gpu_blocked(self, model):
+        """Sant om modellen tidigare har misslyckats på grafikkretsen (med samma fil och OpenVINO-version)."""
+        info = self.models().get(model)
+        if not info:
+            return False
+        try:
+            import openvino as ov
+            ver = ov.get_version()
+        except Exception:
+            ver = "?"
+        return self._gpu_key(info, ver) in self.gpu_unsupported()
+
+    def _gpu_mark(self, info, ov_version, error):
+        data = self.gpu_unsupported()
+        data[self._gpu_key(info, ov_version)] = {"model": os.path.basename(info["path"].rstrip("/")),
+                                                  "error": str(error).strip().splitlines()[0][:300] if str(error).strip() else "",
+                                                  "at": time.strftime("%Y-%m-%d %H:%M")}
+        try:
+            tmp = self._gpu_file() + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, self._gpu_file())
+        except OSError as e:
+            log.warning("Kunde inte spara att %s inte går på grafikkretsen: %s", info["path"], e)
 
     def ensure(self, model, device="AUTO", fallback="yolox_s"):
         with self._lock:
@@ -247,8 +297,14 @@ class Detector:
                 self.size = 640
             devices = core.available_devices
             wanted = []
+            self.gpu_skipped = False
             if device == "GPU" or (device == "AUTO" and any(d.startswith("GPU") for d in devices)):
-                wanted.append("GPU")
+                key = self._gpu_key(info, ov.get_version())
+                if key in self.gpu_unsupported():
+                    self.gpu_skipped = True
+                    log.info("Modell %s går inte på grafikkretsen (sparat sedan tidigare), använder processorn", chosen)
+                else:
+                    wanted.append("GPU")
             wanted.append("CPU")
             last = None
             for dev in wanted:
@@ -265,7 +321,11 @@ class Detector:
                     return
                 except Exception as e:  # GPU kan saknas eller vara för gammal
                     last = e
-                    log.warning("Kunde inte ladda %s på %s: %s", chosen, dev, e)
+                    log.warning("Kunde inte ladda %s på %s: %s", chosen, dev,
+                                (str(e).strip().splitlines() or [""])[0][:300])
+                    if dev == "GPU" and any(d.startswith("GPU") for d in devices):
+                        self.gpu_skipped = True
+                        self._gpu_mark(info, ov.get_version(), e)
             self.error = str(last)
             raise RuntimeError(f"Kunde inte ladda modellen: {last}")
 
@@ -292,7 +352,7 @@ class Detector:
         models = self.models()
         return {
             "model": self.model, "family": self.family, "device": self.device, "size": self.size,
-            "last_ms": self.last_ms, "error": self.error, "warning": self.warning,
+            "last_ms": self.last_ms, "error": self.error, "warning": self.warning, "gpu_skipped": self.gpu_skipped,
             "available": [{"name": n, "source": m["source"], "family": m["family"],
                            "license": m.get("license")} for n, m in sorted(models.items())],
         }

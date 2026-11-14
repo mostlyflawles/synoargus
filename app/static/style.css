@@ -262,3 +262,7 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .ov-help > summary { font-size: 13px; }
 @media (max-width: 420px) { .ov-ctrl { gap: 3px; } .ov-ctrl .btn { padding: 7px 5px; min-width: 36px; font-size: 13px; } }
 @media (max-width: 420px) { .ov-timerow { flex-wrap: nowrap; gap: 6px; } .ov-timerow .ov-time { font-size: 13px; padding: 4px 2px; white-space: nowrap; } .ov-timerow #ovLive { padding: 6px 10px; font-size: 13px; } }
+.pill.rec { background: #2e8b57; }
+.evbadges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.warnmark { cursor: help; }
+.evbody .warn { color: var(--warn, #c9821c); }

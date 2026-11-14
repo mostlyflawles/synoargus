@@ -21,8 +21,9 @@ log = logging.getLogger("synoargus.streams")
 API = "http://127.0.0.1:1984"
 WS = "ws://127.0.0.1:1984"
 REFRESH_S = 600                  # läs om strömadresserna från Surveillance Station så här ofta
-CONFIG = """# Skapad av SynoArgus – ändras inte för hand.
-api:
+# Ingen kommentar och inget tomt "streams: {}": go2rtc sparar strömmar som läggs till via API:t i den här filen,
+# och dess enkla YAML-uppdatering klarar inte de formerna ("yaml: line 1: did not find expected key").
+CONFIG = """api:
   listen: "127.0.0.1:1984"
   origin: ""
 rtsp:
@@ -35,7 +36,6 @@ rtmp:
   listen: ""
 log:
   level: warn
-streams: {}
 """
 
 
@@ -135,6 +135,15 @@ class Streams:
                 await self._refresh(cams)
         return {v["camera"]: k for k, v in self.sources.items()}
 
+    @staticmethod
+    async def _exists(client, name):
+        try:
+            r = await client.get(API + "/api/streams")
+            data = r.json() if r.status_code < 400 else {}
+            return isinstance(data, dict) and name in data
+        except Exception:
+            return False
+
     async def _refresh(self, cams):
         syn = self.cfg.get("synology") or {}
         ids = [c["ss_id"] for c in cams.values() if c.get("ss_id") is not None]
@@ -164,7 +173,11 @@ class Streams:
                     r = await c.put(API + "/api/streams", params={"name": name, "src": s["url"]})
                     if r.status_code >= 400:
                         text = (getattr(r, "text", "") or "").strip()[:200]
-                        raise RuntimeError(f"HTTP {r.status_code}" + (f" {text}" if text else ""))
+                        # go2rtc skapar strömmen innan den försöker spara konfigurationen; ett fel i det sista
+                        # steget betyder inte att strömmen saknas. Kontrollera innan det räknas som fel.
+                        if not await self._exists(c, name):
+                            raise RuntimeError(f"HTTP {r.status_code}" + (f" {text}" if text else ""))
+                        log.debug("go2rtc, ström %s finns trots HTTP %s: %s", s["camera"], r.status_code, text)
                 except Exception as e:
                     s["error"] = f"go2rtc: {mask(e)}"
                     errors.append(f"{s['camera']}: {s['error']}")

@@ -73,6 +73,14 @@ async def flow():
     assert st.status()["sources"]["Hall"]["error"].startswith("go2rtc: HTTP 400") and "Hall" in st.error, st.status()
     httpx.CALLS.clear(); st.refresh_soon(); await st.ensure()
     assert [c["params"]["name"] for c in httpx.CALLS if c["method"] == "PUT"] == ["cam7"] and st.error is None, st.status()
+    # go2rtc creates the stream but fails to save its config file (HTTP 400 yaml …): not an error if the stream exists
+    yaml_err = httpx.Response(400, {}); yaml_err.text = "yaml: line 1: did not find expected key"
+    listing = httpx.Response(200, {"cam7": {"producers": []}, "cam5": {}})
+    httpx.RESPONSES.extend([yaml_err, listing])
+    config.update(lambda d: d["cameras"]["Hall"].__setitem__("stream_url", "rtsp://cam:pw@192.168.1.30/live4"))
+    st.refresh_soon(); await st.ensure()
+    assert st.status()["sources"]["Hall"]["error"] is None and st.error is None, st.status()
+    assert "streams: {}" not in S.CONFIG and not S.CONFIG.lstrip().startswith("#")
     config.update(lambda d: d["cameras"].pop("Yard"))
     httpx.CALLS.clear(); await st.ensure(force=True)
     assert [(c["method"], c["params"]) for c in httpx.CALLS] == [("DELETE", {"src": "cam5"})], httpx.CALLS

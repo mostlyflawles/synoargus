@@ -91,6 +91,9 @@ EN = {
     "Bevakningen är inte igång": "The watch is not running",
     "Ingen inspelning": "No recording",
     "En utvärdering pågår redan": "An evaluation is already running",
+    "utvärdering av modeller pågår": "model evaluation running",
+    "Bevakningen pausad (utvärdering av modeller)": "The watch is paused (model evaluation)",
+    "Bevakningen fortsätter": "The watch continues",
     "Kontot saknar behörighet att läsa inspelningar i Surveillance Station. Ge kontot rätt att visa inspelningar (t.ex. profilen All-Object Manager).":
         "The account may not read recordings in Surveillance Station. Give it the right to view recordings (e.g. the All-Object Manager profile).",
     "Okänd notifiering": "Unknown notification", "Notifieringen är avstängd": "The notification is turned off",

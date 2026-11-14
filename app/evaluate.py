@@ -27,6 +27,7 @@ class ModelEvaluator:
         self.model_dirs = model_dirs
         self.job = None             # senaste körningen
         self._task = None
+        self.on_pause = lambda on: None     # sätts i main: pausar larm och bevakning medan det pågår
 
     @property
     def running(self):
@@ -48,6 +49,7 @@ class ModelEvaluator:
                     "active": {"model": self.engine.detector.model, "device": self.engine.detector.device},
                     "width": img.size[0], "height": img.size[1],
                     "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}
+        self.on_pause(True)
         self._task = asyncio.create_task(self._run(cam, img, plan))
         return self.job
 
@@ -62,7 +64,10 @@ class ModelEvaluator:
         except Exception as e:      # oväntat fel: visa det, men behåll det som hann bli klart
             log.warning("Utvärdering: %s", e)
             job["error"] = str(e)
+        finally:
+            self.on_pause(False)    # larm och bevakning startar alltid igen
         job["current"] = None
+        job["recommended"] = recommend(job["results"])
         job["running"] = False
         job["finished"] = time.time()
 
@@ -78,6 +83,7 @@ class ModelEvaluator:
             res["license"] = (det.meta or {}).get("license")
             if device != "AUTO" and det.device != device:       # t.ex. GPU saknas: CPU användes i stället
                 res["fallback"] = True
+            res["gpu_unsupported"] = bool(getattr(det, "gpu_skipped", False))   # grafikkretsen klarar inte modellen
             t = time.time()
             det.detect(img)
             res["first_ms"] = round((time.time() - t) * 1000)
@@ -102,3 +108,21 @@ class ModelEvaluator:
             del det
             gc.collect()
         return res
+
+
+def recommend(results):
+    """Bäst avvägning: bland modellerna som hittade det kameran letar efter, och som inte är mer än dubbelt så
+    långsamma som den snabbaste av dem (minst 500 ms tillåts), den med högst säkerhet; vid lika den snabbaste.
+    None om ingen modell hittade något (då finns inget att jämföra)."""
+    cands = []
+    for r in results:
+        if r.get("error") or not r.get("alarm") or not r.get("ms"):
+            continue
+        best = max((d.get("confidence", 0) for d in r.get("detections") or [] if d.get("valid")), default=0)
+        cands.append((r, best))
+    if not cands:
+        return None
+    limit = max(500, 2 * min(r["ms"] for r, _ in cands))
+    ok = [(r, b) for r, b in cands if r["ms"] <= limit]
+    r, _ = max(ok, key=lambda x: (round(x[1]), -x[0]["ms"]))
+    return {"model": r["model"], "device": r.get("device")}

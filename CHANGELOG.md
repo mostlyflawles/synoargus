@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 (build 18) – 2026-11-15
+- Fixed: playback in Overview often ended with *Playback got stuck* after 1.1. The stuck-video guard from 0.8 did not know about the shared clock from 1.1, so a tile that was waiting to start or deliberately held back was taken for stuck and reloaded. The guard now only counts time when the clock wants the tile to play; a part that is still loading gets 20 s.
+- A tile that falls behind catches up at most 1.25× (was 2×), which Surveillance Station's stream keeps up with.
+
 ## 1.1 (build 17) – 2026-11-14
 - **Evaluate models:**
   - Alarms and watches are paused while it runs, so all power goes to the evaluation. The header shows it; both start again automatically, also after an error. Alarms meanwhile are saved as *Skipped* under Events.

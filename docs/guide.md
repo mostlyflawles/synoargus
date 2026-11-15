@@ -352,8 +352,8 @@ The **Overview** tab shows all cameras at once, much like Multi View in Surveill
   with + / −, or by double-tapping; drag to move the picture, ⟲ resets.
 - **Tap the date and time** to choose a point in time to play from.
 - During playback all tiles follow **one shared clock**: they start together when all have loaded (at most 5 s), and a
-  tile that falls out of step plays slightly faster or slower until it has caught up. (Streams from Surveillance Station
-  cannot be seeked in, so the speed is adjusted instead.)
+  tile that falls out of step plays slightly faster (at most 1.25×) or slower until it has caught up. (Streams from
+  Surveillance Station cannot be seeked in, so the speed is adjusted instead.)
 - Where there is no recording, SynoArgus's own image from the event is shown instead.
 - **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min and **!>** next event
   (after the last one: live); if they do not fit on one row, <! and !> get a row of their own. An event is played from

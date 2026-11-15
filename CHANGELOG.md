@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2 (build 19) – 2026-11-15
+- Fixed: two events saved in the same millisecond got the same image file name, so the second image overwrote the first and both events showed the same picture. Image files are now created exclusively and get a sequence number if the name is taken. (Found by the tests on GitHub's faster runners.)
+
 ## 1.1.1 (build 18) – 2026-11-15
 - Fixed: playback in Overview often ended with *Playback got stuck* after 1.1. The stuck-video guard from 0.8 did not know about the shared clock from 1.1, so a tile that was waiting to start or deliberately held back was taken for stuck and reloaded. The guard now only counts time when the clock wants the tile to play; a part that is still loading gets 20 s.
 - A tile that falls behind catches up at most 1.25× (was 2×), which Surveillance Station's stream keeps up with.

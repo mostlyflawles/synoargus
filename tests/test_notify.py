@@ -92,6 +92,20 @@ assert ns["hub1"]["url"].startswith("https://hub.example/hook/SECRET123") and ns
 assert {n["id"]: n for n in run(main.get_config(R))["config"]["notifiers"]}["hub1"]["url"].startswith("https://hub.example")
 print("B export OK")
 
+# two events in the same millisecond do not share (overwrite) one image file
+import datetime as _dt
+_real = storage.time.time
+storage.time.time = lambda: 1794390712.421
+try:
+    a = storage.save_event("Yard", True, ["person"], [], b"first", 1)
+    b = storage.save_event("Yard", True, ["person"], [], b"second", 1)
+    c = storage.save_event("Yard", False, [], [], b"third", 0)
+finally:
+    storage.time.time = _real
+assert len({a[1], b[1], c[1]}) == 3 and b[1].endswith("_1.jpg") and c[1].endswith("_2.jpg"), (a, b, c)
+assert [open(os.path.join(main.CAPTURE_DIR, r), "rb").read() for r in (a[1], b[1], c[1])] == [b"first", b"second", b"third"]
+print("B2 unique image files OK")
+
 # storage limit: oldest events go first until the images fit
 storage.clear_all()
 big = os.urandom(300_000)
@@ -101,6 +115,7 @@ for i in range(8):
     ids.append(eid)
     p = os.path.join(main.CAPTURE_DIR, rel); os.utime(p, (time.time() - 1000 + i, time.time() - 1000 + i))
 u = storage.usage(); assert u["events"] == 8 and 2.2 < u["images_mb"] < 2.4, u
+assert len({e["image"] for e in storage.list_events(50)}) == 8                       # every event has its own image
 n = storage.enforce_size(1)          # 1 MB
 u = storage.usage()
 assert n >= 5 and u["images_mb"] <= 1.0 and u["events"] == 8 - n, (n, u)

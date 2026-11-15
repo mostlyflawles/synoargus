@@ -44,8 +44,18 @@ def save_event(camera, alarm, types, dets, jpeg, ms, notified=None):
     if jpeg:
         os.makedirs(os.path.join(CAPTURE_DIR, day), exist_ok=True)
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in camera)
-        rel = f"{day}/{datetime.fromtimestamp(ts).strftime('%H%M%S')}_{int(ts * 1000) % 1000:03d}_{safe}.jpg"
-        with open(os.path.join(CAPTURE_DIR, rel), "wb") as f:
+        base = f"{day}/{datetime.fromtimestamp(ts).strftime('%H%M%S')}_{int(ts * 1000) % 1000:03d}_{safe}"
+        # Två händelser samma millisekund (snabb maskin, eller larm + överhoppat larm) får inte dela fil:
+        # filen skapas exklusivt och får en löpsiffra om namnet redan finns.
+        n = 0
+        while True:
+            rel = f"{base}.jpg" if n == 0 else f"{base}_{n}.jpg"
+            try:
+                fd = os.open(os.path.join(CAPTURE_DIR, rel), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                break
+            except FileExistsError:
+                n += 1
+        with os.fdopen(fd, "wb") as f:
             f.write(jpeg)
     with _lock, _db() as con:
         cur = con.execute(

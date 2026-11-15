@@ -8,7 +8,9 @@ import asyncio
 import base64
 import gc
 import io
+import json
 import logging
+import os
 import statistics
 import time
 
@@ -25,16 +27,65 @@ class ModelEvaluator:
         self.cfg = cfg
         self.engine = engine
         self.model_dirs = model_dirs
-        self.job = None             # senaste körningen
+        self.job = None             # pågående eller senaste körningen
         self._task = None
+        self._cancel = False
+        self.dir = os.path.join(os.environ.get("SYNOARGUS_DATA", "/data"), "evaluations")
         self.on_pause = lambda on: None     # sätts i main: pausar larm och bevakning medan det pågår
 
     @property
     def running(self):
         return bool(self._task and not self._task.done())
 
-    def status(self):
-        return self.job or {"running": False}
+    def status(self, camera=None):
+        """Den pågående utvärderingen om den gäller kameran (eller ingen kamera angavs), annars kamerans sparade."""
+        if self.job and (camera is None or self.job.get("camera") == camera) and (self.running or camera is None):
+            return self.job
+        if camera:
+            saved = self._load(camera)
+            if saved:
+                return saved
+        return {"running": False, "camera": camera} if camera else (self.job or {"running": False})
+
+    # ---------------------------------------------------------------- en sparad utvärdering per kamera
+    def _path(self, camera):
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in camera)
+        return os.path.join(self.dir, safe + ".json")
+
+    def _load(self, camera):
+        try:
+            with open(self._path(camera)) as f:
+                job = json.load(f)
+            return job if job.get("camera") == camera else None
+        except (OSError, ValueError):
+            return None
+
+    def _save(self, job):
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+            tmp = self._path(job["camera"]) + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(job, f)
+            os.replace(tmp, self._path(job["camera"]))
+        except OSError as e:
+            log.warning("Kunde inte spara utvärderingen: %s", e)
+
+    def delete(self, camera):
+        if self.running and self.job and self.job.get("camera") == camera:
+            raise RuntimeError("running")
+        try:
+            os.remove(self._path(camera))
+        except OSError:
+            pass
+        if self.job and self.job.get("camera") == camera:
+            self.job = None
+
+    def cancel(self):
+        """Avbryter efter modellen som körs just nu (en pågående laddning kan inte avbrytas)."""
+        if self.running:
+            self._cancel = True
+            self.job["cancelling"] = True
+        return self.running
 
     async def start(self, cam, devices):
         if self.running:
@@ -49,6 +100,7 @@ class ModelEvaluator:
                     "active": {"model": self.engine.detector.model, "device": self.engine.detector.device},
                     "width": img.size[0], "height": img.size[1],
                     "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}
+        self._cancel = False
         self.on_pause(True)
         self._task = asyncio.create_task(self._run(cam, img, plan))
         return self.job
@@ -57,6 +109,9 @@ class ModelEvaluator:
         job = self.job
         try:
             for model, device in plan:
+                if self._cancel:
+                    job["cancelled"] = True
+                    break
                 job["current"] = {"model": model, "device": device}
                 res = await asyncio.to_thread(self._one, cam, img, model, device)
                 job["results"].append(res)
@@ -69,7 +124,9 @@ class ModelEvaluator:
         job["current"] = None
         job["recommended"] = recommend(job["results"])
         job["running"] = False
+        job.pop("cancelling", None)
         job["finished"] = time.time()
+        self._save(job)
 
     def _one(self, cam, img, model, device):
         det = Detector(*self.model_dirs)

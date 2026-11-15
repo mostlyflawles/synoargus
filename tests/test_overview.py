@@ -124,19 +124,39 @@ assert nx["found"] and nx["next"] == now - 1200 and nx["ongoing"] is False, nx
 print("D timeline OK")
 
 # ---- playback log in the raw data, and streaming the recording
+OPENS = []
 class FakeResp:
-    headers = {"content-type": "video/mp4"}
+    headers = {"content-type": "video/mpeg4"}
     async def aiter_bytes(self):
         yield b"a" * 1000; yield b"b" * 500
     async def aclose(self): pass
-async def fake_open(rec_id, off, play): return FakeResp()
+async def fake_open(rec_id, off, play):
+    OPENS.append((rec_id, off, play)); await asyncio.sleep(0.05); return FakeResp()
 main.ss.open_recording = fake_open
-async def stream():
-    resp = await main.overview_recording(R, cam="Yard", t=now - 1000, length=120, check=0)
-    return b"".join([c async for c in resp.body_iterator]) if hasattr(resp, "body_iterator") else b""
-data = run(stream())
+class RangeReq(Req):
+    def __init__(self, rng=None): self.headers = {"range": rng} if rng else {}
+async def get(rng=None):
+    return await main.overview_recording(RangeReq(rng), cam="Yard", t=now - 1000, length=60, check=0)
+# the browser asks several times at once: Surveillance Station is asked once, the part comes from the temporary file
+async def many():
+    return await asyncio.gather(get(), get("bytes=0-99"), get("bytes=1400-"), get("bytes=-10"))
+full, first, tail, last10 = run(many())
+assert len(OPENS) == 1 and OPENS[0][2] == 60000, OPENS
+assert full.status_code == 200 and full.body == b"a" * 1000 + b"b" * 500 and full.headers["Accept-Ranges"] == "bytes"
+assert full.media_type == "video/mp4"                                            # not SS's "video/mpeg4"
+assert first.status_code == 206 and first.body == b"a" * 100 and first.headers["Content-Range"] == "bytes 0-99/1500"
+assert tail.status_code == 206 and tail.body == b"b" * 100 and tail.headers["Content-Range"] == "bytes 1400-1499/1500"
+assert last10.status_code == 206 and last10.body == b"b" * 10
+assert run(get("bytes=5000-")).status_code == 416
+assert len(OPENS) == 1
+st = [p["status"] for p in list(main.PLAYBACKS)[-5:]]
+assert st.count("fetched") == 1 and st.count("cached") == 4, st
 pb = main.PLAYBACKS[-1]
-assert pb["recording"] == 12 and pb["camera"] == "Yard" and (pb["status"] == "done" or not data), pb
+assert pb["recording"] == 12 and pb["camera"] == "Yard" and pb["bytes"] == 1500, pb
+# old temporary files are removed
+cdir = main.REC_CACHE_DIR; files = os.listdir(cdir); assert len(files) == 1
+old = os.path.join(cdir, files[0]); os.utime(old, (time.time() - 3600, time.time() - 3600))
+main._rec_cache_clean(); assert not os.listdir(cdir)
 raw = run(main.overview_raw(R))
 assert raw["playbacks"][0]["recording"] == 12 and "recordings_parsed" in raw
 print("D2 playback log OK")

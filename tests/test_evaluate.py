@@ -122,4 +122,41 @@ assert recommend([P("tiny", 300, 65), P("m", 650, 82), P("x", 900, 90)]) == {"mo
 assert recommend([P("a", 200, 74.2), P("b", 150, 73.8)]) == {"model": "b", "device": "GPU"}                    # equal (74 %): the faster
 assert recommend([P("a", 100, 40, alarm=False), {"model": "e", "error": "x"}]) is None
 print("D recommend OK")
+# one saved evaluation per camera; switching camera shows that camera's; delete removes it
+config.update(lambda d: d["cameras"].__setitem__("Hall", {**camera_defaults("Hall", 7), "types": ["person"], "min_width": 0, "min_height": 0}))
+async def eval_cam(name, **kw):
+    await main.models_evaluate(R, {"camera": name, **kw})
+    while main.evaluator.running:
+        await asyncio.sleep(0.02)
+run(eval_cam("Hall", device="CPU"))
+yard = run(main.models_evaluate_status(R, camera="Yard")); hall = run(main.models_evaluate_status(R, camera="Hall"))
+assert yard["camera"] == "Yard" and hall["camera"] == "Hall" and not hall["busy"], (yard.get("camera"), hall.get("camera"))
+assert {r["wanted"] for r in hall["results"]} == {"CPU"}                      # the device chosen in the list, unsaved
+assert os.path.exists(os.path.join(main.evaluator.dir, "Hall.json")) and os.path.exists(os.path.join(main.evaluator.dir, "Yard.json"))
+# saved across a restart
+main.evaluator.job = None
+assert run(main.models_evaluate_status(R, camera="Hall"))["results"][0]["model"] == "broken"
+try: run(main.models_evaluate(R, {"camera": "Hall", "device": "TPU"})); raise SystemExit("bad device")
+except main.HTTPException as e: assert e.status_code == 400
+run(main.models_evaluate_delete(R, camera="Hall"))
+assert run(main.models_evaluate_status(R, camera="Hall")) == {"running": False, "camera": "Hall", "busy": False, "busy_camera": None}
+print("E saved per camera OK")
+
+# cancel: stops after the model that is running, alarms start again, what was done is kept
+_slow = FakeDet.detect
+def slow(self, img): time.sleep(0.05); return _slow(self, img)
+FakeDet.detect = slow
+async def cancel_flow():
+    await main.models_evaluate(R, {"camera": "Yard", "compare_devices": True})
+    await asyncio.sleep(0.05)
+    r = await main.models_evaluate_cancel(R)
+    mid = await main.models_evaluate_status(R, camera="Hall")
+    while main.evaluator.running:
+        await asyncio.sleep(0.02)
+    return r, mid, await main.models_evaluate_status(R, camera="Yard")
+r, mid, st = run(cancel_flow())
+assert r["cancelling"] and mid["busy"] and mid["busy_camera"] == "Yard" and mid["camera"] == "Hall"
+assert st["cancelled"] and 0 < st["done"] < st["total"] and main.engine.paused is None and main.watch.paused is None, st
+FakeDet.detect = _slow
+print("F cancel OK")
 print("ALL evaluate OK")

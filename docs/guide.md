@@ -351,9 +351,9 @@ The **Overview** tab shows all cameras at once, much like Multi View in Surveill
 - **Tap a camera** for full screen. Sound on at once is a setting (Settings > Other > Overview). **Zoom** by pinching,
   with + / −, or by double-tapping; drag to move the picture, ⟲ resets.
 - **Tap the date and time** to choose a point in time to play from.
-- During playback all tiles follow **one shared clock**: they start together when all have loaded (at most 5 s), and a
-  tile that falls out of step plays slightly faster (at most 1.25×) or slower until it has caught up. (Streams from
-  Surveillance Station cannot be seeked in, so the speed is adjusted instead.)
+- Recordings are played **one minute at a time**. SynoArgus fetches each part from Surveillance Station into a
+  temporary file on the NAS (`data/cache/recordings`, removed after 10 minutes, at most 500 MB) and serves it from
+  there with range support, so it starts at once and is fetched only once. Each tile plays on its own.
 - Where there is no recording, SynoArgus's own image from the event is shown instead.
 - **Controls:** **<!** previous event (in live: the latest), −1 min, −10 s, **⏸/▶**, +10 s, +1 min and **!>** next event
   (after the last one: live); if they do not fit on one row, <! and !> get a row of their own. An event is played from
@@ -379,8 +379,8 @@ How it works:
   SynoArgus account must be allowed to view recordings (error 105 = missing permission).
 - Playback that stands still is reloaded automatically (three attempts, then *Playback got stuck* – ▶ tries again).
 - *Show raw data for troubleshooting* (turn it on under Settings > Other > Overview) shows what Surveillance Station
-  returns (passwords and stream keys removed), how the recordings were read, a two-second test playback and the latest
-  playbacks.
+  returns (passwords and stream keys removed), the recordings of the last 24 hours and how they were read, a two-second
+  test playback and the latest playbacks.
 - Each live tile is a stream from the NAS. Close the tab when you are not watching.
 
 ## 8. Control cameras via webhook
@@ -440,7 +440,9 @@ If the NAS uses a self-signed certificate on that address, leave *Verify HTTPS c
 
 ### Evaluate models
 
-Settings > Other > AI > **Evaluate models**: choose a camera and press the button. SynoArgus takes **one** image and
+Settings > Other > AI > **Evaluate models**: choose a camera and press **Evaluate**. The setting under *Compute* is
+used as it stands in the list, even if not saved. **Cancel** stops after the model that is running. Each camera keeps
+its latest evaluation (in `data/evaluations`) – switch camera in the list to see it; **Delete** removes it. SynoArgus takes **one** image and
 lets every installed model analyse it with that camera's current settings (types, minimum confidence, zones, minimum
 size). Each model gets a card with the image and its AI boxes, the time per image (median of three runs after a
 warm-up), the load time, CPU or GPU, what it found and whether it would have alarmed, sorted by model name. *Compare

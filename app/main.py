@@ -280,6 +280,7 @@ async def startup():
                 n += await asyncio.to_thread(storage.enforce_size, config.get("storage", "max_mb"))
                 if n:
                     log.info("Rensade %d gamla händelser", n)
+                await asyncio.to_thread(_rec_cache_clean)
             except Exception as e:
                 log.warning("Rensning misslyckades: %s", e)
             await asyncio.sleep(600)
@@ -740,6 +741,10 @@ async def delete_camera(name: str, request: Request):
     if watch.running() == name:
         await watch.stop("manuellt")
     config.update(lambda d: (d["cameras"].pop(name, None), d.setdefault("watches", {}).pop(name, None)))
+    try:
+        evaluator.delete(name)          # kamerans sparade utvärdering
+    except RuntimeError:
+        pass
     return {"ok": True}
 
 
@@ -810,7 +815,11 @@ async def models_evaluate(request: Request, body: dict = Body(default={})):
     """Tar en bild från kameran och låter varje installerad modell analysera den (i bakgrunden)."""
     require(request)
     cam = deepcopy(cam_or_404(str(body.get("camera") or "")))
-    devices = ["CPU", "GPU"] if body.get("compare_devices") else [config.get("detector", "device") or "AUTO"]
+    # det som är valt under Beräkning just nu, även om det inte är sparat
+    device = str(body.get("device") or config.get("detector", "device") or "AUTO").upper()
+    if device not in ("AUTO", "CPU", "GPU"):
+        raise err(400, "Ogiltigt värde: {f}", f="device")
+    devices = ["CPU", "GPU"] if body.get("compare_devices") else [device]
     if evaluator.running:
         raise HTTPException(409, tr("En utvärdering pågår redan"))
     try:
@@ -821,16 +830,34 @@ async def models_evaluate(request: Request, body: dict = Body(default={})):
 
 
 @app.get("/api/models/evaluate")
-async def models_evaluate_status(request: Request, since: int = 0):
-    """Status och resultat. since = antal resultat klienten redan har (bilderna skickas bara en gång)."""
+async def models_evaluate_status(request: Request, since: int = 0, camera: str = ""):
+    """Status och resultat för kameran (pågående eller sparad). since = antal resultat klienten redan har."""
     require(request)
-    job = dict(evaluator.status())
+    job = dict(evaluator.status(camera or None))
+    job["busy"] = evaluator.running
+    job["busy_camera"] = evaluator.job.get("camera") if evaluator.running and evaluator.job else None
     if "results" in job:
         job["results"] = job["results"][max(0, since):]
         job["since"] = max(0, since)
         if since:
             job.pop("image", None)
     return job
+
+
+@app.post("/api/models/evaluate/cancel")
+async def models_evaluate_cancel(request: Request):
+    require(request)
+    return {"cancelling": evaluator.cancel()}
+
+
+@app.delete("/api/models/evaluate")
+async def models_evaluate_delete(request: Request, camera: str):
+    require(request)
+    try:
+        evaluator.delete(camera)
+    except RuntimeError:
+        raise HTTPException(409, tr("En utvärdering pågår redan"))
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ rörelsedetektering i Surveillance Station
@@ -1081,31 +1108,111 @@ async def overview_recording(request: Request, cam: str, t: float, length: int =
         return {"found": True, "start": r["start"] + offset, "stop": r["stop"], "next": min(nxt) if nxt else None,
                 "ongoing": bool(r.get("estimated")) and r["stop"] >= time.time() - 5}
     log_entry = {"at": _iso(time.time()), "camera": cam, "time": _iso(t), "recording": r["id"],
-                 "offset_s": round(offset, 1), "length_s": length, "bytes": 0, "status": "start"}
+                 "offset_s": round(offset, 1), "length_s": length, "bytes": 0, "status": "start",
+                 "range": request.headers.get("range")}
     PLAYBACKS.append(log_entry)
     try:
-        resp = await ss.open_recording(r["id"], offset * 1000, length * 1000)
+        path = await _rec_fetch(r["id"], offset, length, log_entry)
     except SynologyError as e:
         log_entry.update(status="error", error=str(e))
         raise HTTPException(502, str(e))
-    log_entry.update(status="streaming", content_type=resp.headers.get("content-type"))
+    except Exception as e:
+        log_entry.update(status="error", error=safe_error(e))
+        raise HTTPException(502, safe_error(e))
+    return _range_response(path, request.headers.get("range"),
+                           {"X-Start": str(r["start"] + offset), "X-Stop": str(r["stop"]), "Cache-Control": "no-store"},
+                           log_entry)
 
-    async def body():
+
+# ------------------------------------------------------------------ inspelningsbitar via tillfällig fil
+# Filerna från Surveillance Station har sin innehållsförteckning (moov) sist. Webbläsaren måste då kunna hoppa i
+# filen, annars hämtar den om hela biten gång på gång. Biten hämtas därför till en tillfällig fil på NAS:en (snabbt,
+# lokalt) och skickas därifrån med stöd för Range. Filerna rensas efter en stund.
+REC_CACHE_DIR = os.path.join(os.path.dirname(CAPTURE_DIR), "cache", "recordings")
+REC_CACHE_MAX_AGE = 600         # sekunder
+REC_CACHE_MAX_MB = 500
+_rec_locks = {}
+
+
+def _rec_cache_clean():
+    try:
+        files = []
+        for name in os.listdir(REC_CACHE_DIR):
+            p = os.path.join(REC_CACHE_DIR, name)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            files.append((st.st_mtime, st.st_size, p))
+    except OSError:
+        return
+    now, total = time.time(), 0
+    for mtime, size, p in sorted(files, reverse=True):            # nyast först
+        too_old = now - mtime > (REC_CACHE_MAX_AGE if not p.endswith(".part") else 3600)
+        if too_old or total + size > REC_CACHE_MAX_MB * 1e6:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        else:
+            total += size
+
+
+async def _rec_fetch(rec_id, offset, length, log_entry):
+    """Hämtar biten till en tillfällig fil (en gång, även om webbläsaren frågar flera gånger samtidigt)."""
+    os.makedirs(REC_CACHE_DIR, exist_ok=True)
+    key = f"{int(rec_id)}_{int(round(offset * 10))}_{int(length)}"
+    path = os.path.join(REC_CACHE_DIR, key + ".mp4")
+    lock = _rec_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if os.path.exists(path):
+            os.utime(path)
+            log_entry.update(status="cached", bytes=os.path.getsize(path))
+            return path
+        _rec_cache_clean()
+        resp = await ss.open_recording(rec_id, offset * 1000, length * 1000)
+        log_entry.update(status="fetching", content_type=resp.headers.get("content-type"))
+        tmp = path + ".part"
         try:
-            async for chunk in resp.aiter_bytes():
-                log_entry["bytes"] += len(chunk)
-                yield chunk
-            log_entry["status"] = "done"
-        except Exception as e:
-            log_entry.update(status="error", error=safe_error(e))
-            raise
+            with open(tmp, "wb") as f:
+                async for chunk in resp.aiter_bytes():
+                    f.write(chunk)
+                    log_entry["bytes"] += len(chunk)
         finally:
-            if log_entry["status"] == "streaming":
-                log_entry["status"] = "closed by browser"
             await resp.aclose()
-    return StreamingResponse(body(), media_type=resp.headers.get("content-type") or "video/mp4",
-                             headers={"X-Start": str(r["start"] + offset), "X-Stop": str(r["stop"]),
-                                      "Cache-Control": "no-store"})
+        if not log_entry["bytes"]:
+            os.remove(tmp)
+            raise RuntimeError(tr("Ingen inspelning"))
+        os.replace(tmp, path)
+        log_entry["status"] = "fetched"
+    _rec_locks.pop(key, None)
+    return path
+
+
+def _range_response(path, range_header, headers, log_entry=None):
+    """Skickar filen, hela eller den del webbläsaren ber om (Range: bytes=a-b)."""
+    size = os.path.getsize(path)
+    start, end = 0, size - 1
+    status = 200
+    m = re.match(r"\s*bytes=(\d*)-(\d*)\s*$", range_header or "")
+    if m and (m.group(1) or m.group(2)):
+        if m.group(1):
+            start = int(m.group(1))
+            end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+        else:                                     # bytes=-N: de sista N
+            start = max(0, size - int(m.group(2)))
+        if start > end or start >= size:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        status = 206
+    with open(path, "rb") as f:
+        f.seek(start)
+        data = f.read(end - start + 1)
+    h = {**headers, "Accept-Ranges": "bytes", "Content-Length": str(len(data))}
+    if status == 206:
+        h["Content-Range"] = f"bytes {start}-{end}/{size}"
+    if log_entry is not None:
+        log_entry["sent"] = log_entry.get("sent", 0) + len(data)
+    return Response(data, status_code=status, headers=h, media_type="video/mp4")
 
 
 @app.get("/api/overview/raw")
@@ -1117,7 +1224,7 @@ async def overview_raw(request: Request):
     rec_raw, parsed, play = None, [], None
     if ids:
         try:
-            items, rec_raw = await ss.recordings(list(ids), time.time() - 3 * 3600, time.time(), limit=20)
+            items, rec_raw = await ss.recordings(list(ids), time.time() - 24 * 3600, time.time(), limit=20)   # senaste dygnet
             parsed = [{"camera": ids.get(r["cam"]), "id": r["id"], "start": _iso(r["start"]), "stop": _iso(r["stop"]),
                        "estimated": bool(r.get("estimated"))} for r in items]
             if items:                                   # provspela 2 s av den senaste inspelningen

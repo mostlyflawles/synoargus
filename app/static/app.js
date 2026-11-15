@@ -23,7 +23,9 @@ const EN = {
   'Utan event skickas den senaste händelsen som väntar. Med &text=… ersätts texten. Med en reservtid skickas den ändå om ingen har anropat.': 'Without event the latest waiting event is sent. With &text=… the text is replaced. With a fallback time it is sent anyway if nobody has called.',
   'Inga filter: den här notifieringen tar emot alla larm från alla kameror i alla lägen.': 'No filters: this notification receives every alarm from every camera in every mode.',
   'väntar på anrop': 'waiting for a call', 'skickad på begäran': 'sent on request',
-  'Utvärdera modeller': 'Evaluate models', 'Jämför processor och grafikkrets': 'Compare CPU and GPU',
+  'Utvärdera modeller': 'Evaluate models', 'Utvärdera': 'Evaluate', 'Radera': 'Delete',
+  'En utvärdering pågår för {cam}.': 'An evaluation is running for {cam}.', 'Avbryter efter den här modellen …': 'Cancelling after this model …',
+  'Ingen utvärdering för den här kameran än.': 'No evaluation for this camera yet.', 'Avbruten – {n} av {tot} hann utvärderas.': 'Cancelled – {n} of {tot} were evaluated.', 'Jämför processor och grafikkrets': 'Compare CPU and GPU',
   'Tar en bild från kameran och låter varje installerad modell analysera den med kamerans inställningar. Larm och bevakning pausas medan det pågår. Utvärdera gärna under olika ljusförhållanden.': 'Takes one image from the camera and lets every installed model analyse it with the camera\'s settings. Alarms and watches are paused while it runs. Evaluate in different lighting conditions too.',
   'Utvärderar – larm och bevakning pausade': 'Evaluating – alarms and watches paused', 'Den här webbläsarens tidszon': 'This browser\'s time zone', 'rekommenderas': 'recommended',
   'Bäst avvägning mellan säkerhet och tid i den här bilden': 'Best balance of confidence and time in this image',
@@ -1224,7 +1226,9 @@ function renderSettings() {
     <div class="row">
       <select id="evCam" data-nosave style="width:auto">${Object.keys(c.cameras || {}).map(n => `<option>${esc(n)}</option>`).join('')}</select>
       <label class="check"><input type="checkbox" id="evBoth" data-nosave> ${t('Jämför processor och grafikkrets')}</label>
-      <button type="button" class="btn" id="evStart" ${Object.keys(c.cameras || {}).length ? '' : 'disabled'}>🔬 ${t('Utvärdera modeller')}</button>
+      <button type="button" class="btn" id="evStart" ${Object.keys(c.cameras || {}).length ? '' : 'disabled'}>🔬 ${t('Utvärdera')}</button>
+      <button type="button" class="btn" id="evCancel" hidden>✕ ${t('Avbryt')}</button>
+      <button type="button" class="btn" id="evDelete" hidden>🗑 ${t('Radera')}</button>
     </div>
     <div id="evProg" class="small muted"></div>
     <div id="evGrid" class="evgrid"></div>
@@ -1391,24 +1395,36 @@ function drawEvaluate() {
     const after = [...$('#evGrid').children].find(x => order(x).localeCompare(order(el), 'sv') > 0);
     $('#evGrid').insertBefore(el, after || null);
   };
+  const when = ts => new Date(ts * 1000).toLocaleString(S.lang === 'en' ? 'en-GB' : 'sv-SE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const show = (sel, on) => { const el = $(sel); if (el) el.hidden = !on; };
   const poll = async () => {
     clearTimeout(E.timer);
     if (!$('#evGrid')) return;
+    const cam = $('#evCam').value;
     let job;
-    try { job = await api(`/api/models/evaluate?since=${E.have}`); } catch (e) { $('#evProg').textContent = e.message; return; }
-    if (!$('#evGrid') || !job.camera) return;
+    try { job = await api(`/api/models/evaluate?camera=${encodeURIComponent(cam)}&since=${E.have}`); } catch (e) { $('#evProg').textContent = e.message; return; }
+    if (!$('#evGrid') || $('#evCam').value !== cam) return;          // kameran byttes under tiden
     if (E.have === 0) $('#evGrid').innerHTML = '';
     (job.results || []).forEach(r => place(card(r, job)));
     E.have += (job.results || []).length;
-    $('#evStart').disabled = job.running;
-    setEvalPill(job.running);
-    const when = new Date(job.started * 1000).toLocaleTimeString(S.lang === 'en' ? 'en-GB' : 'sv-SE', { hour: '2-digit', minute: '2-digit' });
-    if (job.running) {
-      $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('Analyserar med {m} ({n} av {tot}) … Larm och bevakning är pausade.', { m: job.current ? job.current.model + (job.current.device !== 'AUTO' ? ' / ' + devName(job.current.device) : '') : '', n: job.done + 1, tot: job.total }))}`;
+    const mine = job.running && job.camera === cam;
+    setEvalPill(job.busy);
+    $('#evStart').disabled = job.busy;
+    show('#evCancel', job.busy && !job.cancelling);
+    show('#evDelete', !mine && !!job.started);
+    if (job.busy && !mine) {                                          // en annan kamera utvärderas
+      $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('En utvärdering pågår för {cam}.', { cam: job.busy_camera || '' }))}`;
+      E.timer = setTimeout(poll, 2000);
+      return;
+    }
+    if (mine) {
+      $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(job.cancelling ? t('Avbryter efter den här modellen …') : t('Analyserar med {m} ({n} av {tot}) … Larm och bevakning är pausade.', { m: job.current ? job.current.model + (job.current.device !== 'AUTO' ? ' / ' + devName(job.current.device) : '') : '', n: job.done + 1, tot: job.total }))}`;
       E.timer = setTimeout(poll, 1500);
       return;
     }
-    let text = t('{cam}, bild tagen {when}. Tryck på en bild för att förstora.', { cam: job.camera, when });
+    if (!job.started) { $('#evProg').textContent = t('Ingen utvärdering för den här kameran än.'); return; }
+    let text = t('{cam}, bild tagen {when}. Tryck på en bild för att förstora.', { cam: job.camera, when: when(job.started) });
+    if (job.cancelled) text += ' ' + t('Avbruten – {n} av {tot} hann utvärderas.', { n: job.done, tot: job.total });
     const rec = job.recommended;
     $$('#evGrid .pill.rec').forEach(x => x.remove());
     if (rec) {
@@ -1418,11 +1434,23 @@ function drawEvaluate() {
     $('#evProg').innerHTML = esc(text) + (job.error ? ` <span class="err">${esc(job.error)}</span>` : '');
   };
   stoppers.add(() => clearTimeout(E.timer));
+  const reload = () => { E.have = 0; $('#evGrid').innerHTML = ''; $('#evProg').textContent = ''; poll(); };
+  $('#evCam').addEventListener('change', reload);
   $('#evStart').onclick = async () => {
     $('#evStart').disabled = true; $('#evGrid').innerHTML = ''; E.have = 0;
     $('#evProg').innerHTML = `<span class="spinner"></span> ${esc(t('Tar en bild…'))}`;
-    try { await api('/api/models/evaluate', { method: 'POST', body: { camera: $('#evCam').value, compare_devices: $('#evBoth').checked } }); setEvalPill(true); poll(); }
+    const dev = $('#setForm').elements['det.device'].value;             // det som är valt, även osparat
+    try { await api('/api/models/evaluate', { method: 'POST', body: { camera: $('#evCam').value, compare_devices: $('#evBoth').checked, device: dev } }); setEvalPill(true); poll(); }
     catch (e) { $('#evProg').textContent = e.message; $('#evStart').disabled = false; }
+  };
+  $('#evCancel').onclick = async () => {
+    $('#evCancel').hidden = true;
+    try { await api('/api/models/evaluate/cancel', { method: 'POST' }); } catch (e) { toast(e.message, true); }
+    poll();
+  };
+  $('#evDelete').onclick = async () => {
+    try { await api(`/api/models/evaluate?camera=${encodeURIComponent($('#evCam').value)}`, { method: 'DELETE' }); reload(); }
+    catch (e) { toast(e.message, true); }
   };
   $('#evGrid').addEventListener('click', e => {
     if (e.target.tagName === 'IMG') { $('#viewerImg').src = e.target.src; $('#viewer').showModal(); return; }
@@ -1434,7 +1462,8 @@ function drawEvaluate() {
     f.elements['det.model'].scrollIntoView({ behavior: 'smooth', block: 'center' });
     toast(t('Vald – tryck Spara för att börja använda den'));
   });
-  poll();                        // visa senaste utvärderingen om det finns en
+  // visa den kamera som utvärderas just nu, annars den valda kamerans senaste utvärdering
+  api('/api/models/evaluate').then(j => { if (j.busy_camera && $('#evCam')) $('#evCam').value = j.busy_camera; }).catch(() => {}).finally(poll);
 }
 
 function renderModes() {

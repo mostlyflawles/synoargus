@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3 (build 20) – 2026-11-15
+- **Overview, playback:**
+  - The shared clock from 1.1 is removed again; each tile plays on its own as in 1.0, with the stuck-video guard from 0.8.
+  - Fixed: the browser fetched the same part again and again (about 19 MB each time) because Surveillance Station's files have their index at the end and SynoArgus could only send them from the start. Each part is now fetched once into a temporary file on the NAS and served with range support. Parts are one minute (was five), so playback starts quickly. Temporary files are removed after 10 minutes, at most 500 MB.
+- **Evaluate models:** the button is called *Evaluate*; *Cancel* stops after the model that is running; each camera keeps its latest evaluation, shown when the camera is chosen in the list; *Delete* removes it. The setting under *Compute* is used as it stands, even if not saved.
+- Raw data for troubleshooting shows the recordings of the last 24 hours (was 3 hours).
+
 ## 1.1.2 (build 19) – 2026-11-15
 - Fixed: two events saved in the same millisecond got the same image file name, so the second image overwrote the first and both events showed the same picture. Image files are now created exclusively and get a sequence number if the name is taken. (Found by the tests on GitHub's faster runners.)
 

@@ -229,8 +229,9 @@ class SurveillanceStation:
         items = (data or {}).get("recordings") or (data or {}).get("events") or []
         return parse_recordings(items), data
 
-    async def open_recording(self, rec_id, offset_ms, play_ms):
-        """Öppnar en del av en inspelning som ström (mp4). Returnerar httpx-svaret – stäng det efteråt."""
+    async def open_recording(self, rec_id, offset_ms=None, play_ms=None):
+        """Öppnar en del av en inspelning som ström (mp4). Returnerar httpx-svaret – stäng det efteråt.
+        Utan offset_ms/play_ms skickas parametern inte alls (hela inspelningen / resten av den)."""
         async with self._lock:
             if not self.sid:
                 await self._login()
@@ -239,10 +240,14 @@ class SurveillanceStation:
         client = self._http()
         last = None
         for v in ("6", "5", "4"):
-            req = client.build_request("GET", url + "/webapi/entry.cgi", params={
-                "api": "SYNO.SurveillanceStation.Recording", "version": v, "method": "Download",
-                "id": str(rec_id), "offsetTimeMs": str(int(offset_ms)), "playTimeMs": str(int(play_ms)), "_sid": sid},
-                timeout=httpx.Timeout(60.0, connect=5.0))
+            params = {"api": "SYNO.SurveillanceStation.Recording", "version": v, "method": "Download",
+                      "id": str(rec_id), "_sid": sid}
+            if offset_ms is not None:
+                params["offsetTimeMs"] = str(int(offset_ms))
+            if play_ms is not None:
+                params["playTimeMs"] = str(int(play_ms))
+            req = client.build_request("GET", url + "/webapi/entry.cgi", params=params,
+                                       timeout=httpx.Timeout(60.0, connect=5.0))
             r = await client.send(req, stream=True)
             ctype = r.headers.get("content-type", "")
             if "json" not in ctype and "text" not in ctype:

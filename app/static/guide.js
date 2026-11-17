@@ -86,7 +86,7 @@ window.GUIDE = {
   <li>Inspelningar kräver att SynoArgus-kontot får se inspelningar i Surveillance Station (fel 105 = saknar behörighet).</li>
   <li>Varje kamera i live är en ström från NAS:en. Fyra kameror samtidigt belastar en DS918+ något – stäng fliken när du inte tittar.</li>
   <li>Står uppspelningen still laddas den om automatiskt. Går det inte efter tre försök visas <i>Uppspelningen fastnade</i> – tryck ▶ för att försöka igen.</li>
-  <li><i>Visa rådata för felsökning</i> (slås på under <i>Övrigt &gt; Översikt</i>) visar vad Surveillance Station svarar, utan lösenord och strömnycklar, och de senaste uppspelningarna.</li>
+  <li><i>Visa rådata för felsökning</i> (slås på under <i>Övrigt &gt; Översikt</i>) visar vad Surveillance Station svarar, utan lösenord och strömnycklar, och de senaste uppspelningarna. <i>Testa hämtning från Surveillance Station</i> provar olika sätt att hämta en bit av en inspelning och visar hur många sekunder video varje sätt gav.</li>
 </ul>`],
       ['modes', 'Lägen och Home Mode', `
 <p>SynoArgus har ett aktuellt <b>läge</b> – från början <i>Hemma</i>, <i>Natt</i> och <i>Borta</i>. Byt namn och lägg till egna under <b>Inställningar &gt; Lägen</b>.</p>
@@ -292,7 +292,7 @@ window.GUIDE = {
   <li>Recordings require that the SynoArgus account may view recordings in Surveillance Station (error 105 = missing permission).</li>
   <li>Each live camera is a stream from the NAS. Four cameras at once put some load on a DS918+ – close the tab when you are not watching.</li>
   <li>If playback stands still it is reloaded automatically. If it still fails after three attempts, <i>Playback got stuck</i> is shown – press ▶ to try again.</li>
-  <li><i>Show raw data for troubleshooting</i> (turned on under <i>Other &gt; Overview</i>) shows what Surveillance Station answers, without passwords and stream keys, and the latest playbacks.</li>
+  <li><i>Show raw data for troubleshooting</i> (turned on under <i>Other &gt; Overview</i>) shows what Surveillance Station answers, without passwords and stream keys, and the latest playbacks. <i>Test fetching from Surveillance Station</i> tries several ways of fetching a part of a recording and shows how many seconds of video each one gave.</li>
 </ul>`],
       ['modes', 'Modes and Home Mode', `
 <p>SynoArgus has a current <b>mode</b> – initially <i>Home</i>, <i>Night</i> and <i>Away</i>. Rename them and add your own under <b>Settings &gt; Modes</b>.</p>

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3 (build 21) – 2026-11-17
+- **Overview, playback of parts in the middle of a recording:** Surveillance Station sometimes sends only the first second of the part and fills the rest of the file with zeros. The browser then played one second, and SynoArgus fetched the next part (about 19 MB) for every second.
+  - SynoArgus now reads how long each part really is. If a part is much shorter than asked for, it tries once whether Surveillance Station reads *playTimeMs* as the end point instead of the length, and uses that way from then on if it gives whole parts.
+  - If no way works, the tile shows *Surveillance Station only sent 1 s of the recording* instead of fetching second by second. ▶ tries again.
+  - The zeros are cut from the temporary files.
+- **Raw data:** *Test fetching from Surveillance Station* tries several ways of fetching a part of the longest recording of the last day (start, 10 s, 120 s, the middle, the middle with the end point, without length, the whole file) and shows how many seconds of video each one gave. The playback log shows each part's real length.
+
 ## 1.1.3 (build 20) – 2026-11-15
 - **Overview, playback:**
   - The shared clock from 1.1 is removed again; each tile plays on its own as in 1.0, with the stuck-video guard from 0.8.

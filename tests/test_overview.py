@@ -161,6 +161,83 @@ raw = run(main.overview_raw(R))
 assert raw["playbacks"][0]["recording"] == 12 and "recordings_parsed" in raw
 print("D2 playback log OK")
 
+# ---- mp4 parts: Surveillance Station sometimes sends only the first second and pads with zeros
+import struct
+from app import mp4info
+def box(t, body): return struct.pack(">I4s", 8 + len(body), t) + body
+def mp4(seconds, pad=0, moov_first=False):
+    mvhd = box(b"mvhd", bytes(12) + struct.pack(">II", 1000, int(seconds * 1000)) + bytes(80))
+    moov, mdat = box(b"moov", mvhd), box(b"mdat", b"v" * int(seconds * 100))
+    head = box(b"ftyp", b"isom" + bytes(4))
+    return head + (moov + mdat if moov_first else mdat + moov) + bytes(pad)
+p_ = os.path.join(main.REC_CACHE_DIR, "x.mp4"); os.makedirs(main.REC_CACHE_DIR, exist_ok=True)
+open(p_, "wb").write(mp4(1.04, pad=5000))
+i = mp4info.inspect(p_)
+assert i["duration_s"] == 1.04 and i["trailing"] == 5000 and i["moov_at"] == "end" and mp4info.is_short(i, 60), i
+assert mp4info.trim(p_, i) == 5000 and mp4info.inspect(p_)["complete"]
+open(p_, "wb").write(mp4(60))
+assert not mp4info.is_short(mp4info.inspect(p_), 60) and mp4info.trim(p_) == 0
+open(p_, "wb").write(mp4(1800, moov_first=True)[:400])              # only the beginning of a whole file
+i = mp4info.inspect(p_, partial=True); assert i["duration_s"] == 1800 and i["moov_at"] == "start", i
+open(p_, "wb").write(b"a" * 1500); assert mp4info.trim(p_) == 0 and os.path.getsize(p_) == 1500   # unknown: left alone
+os.remove(p_)
+
+class MP4Resp:
+    headers = {"content-type": "video/mpeg4"}
+    def __init__(self, data): self.data = data
+    async def aiter_bytes(self):
+        for i in range(0, len(self.data), 4096): yield self.data[i:i + 4096]
+    async def aclose(self): pass
+OPENS.clear()
+async def ss_absolute(rec_id, off, play):         # treats playTimeMs as the end point
+    OPENS.append((off, play))
+    if off and play is not None and play <= off: return MP4Resp(mp4(1.0, pad=20000))
+    return MP4Resp(mp4(60))
+main.ss.open_recording = ss_absolute
+main.REC_MODE["mode"] = None
+for f in os.listdir(main.REC_CACHE_DIR): os.remove(os.path.join(main.REC_CACHE_DIR, f))
+recs.append({"id": 20, "cam": 5, "start": now - 5000, "stop": now - 3700, "reason": 1})
+res = run(main.overview_recording(RangeReq(), cam="Yard", t=now - 4400, length=60, check=0))
+pb = main.PLAYBACKS[-1]
+assert main.REC_MODE["mode"] == "absolute" and pb["short"] is False and pb["duration_s"] == 60, pb
+assert OPENS == [(600000, 60000), (600000, 660000)], OPENS
+assert mp4info.inspect(os.path.join(main.REC_CACHE_DIR, os.listdir(main.REC_CACHE_DIR)[0]))["duration_s"] == 60
+run(main.overview_recording(RangeReq(), cam="Yard", t=now - 4300, length=60, check=0))
+assert OPENS[-1] == (700000, 760000) and len(OPENS) == 3            # the learnt way is used directly
+# the end of a recording is not a broken part
+res = run(main.overview_recording(RangeReq(), cam="Yard", t=now - 3705, length=60, check=0))
+assert main.PLAYBACKS[-1]["short"] is False
+
+OPENS.clear()
+async def ss_broken(rec_id, off, play):            # always only the first second
+    OPENS.append((off, play))
+    return MP4Resp(mp4(1.0, pad=20000) if off else mp4(60))
+main.ss.open_recording = ss_broken
+main.REC_MODE["mode"] = None
+run(main.overview_recording(RangeReq(), cam="Yard", t=now - 4200, length=60, check=0))
+pb = main.PLAYBACKS[-1]
+assert main.REC_MODE["mode"] == "broken" and pb["short"] is True and pb["trimmed"] == 20000, pb
+assert len(OPENS) == 2
+run(main.overview_recording(RangeReq(), cam="Yard", t=now - 4100, length=60, check=0))
+assert len(OPENS) == 3                                                # no second try once known broken
+cached = run(main.overview_recording(RangeReq(), cam="Yard", t=now - 4100, length=60, check=0))
+assert main.PLAYBACKS[-1]["status"] == "cached" and main.PLAYBACKS[-1]["short"] is True
+
+# the test in the raw data tries several ways and reports what came back
+OPENS.clear(); main.ss.open_recording = ss_absolute
+vt = run(main.recording_test(R, cam="Yard"))
+assert vt["recording"] == 20 and vt["recording_length_s"] == 1300, vt
+by = {r["variant"]: r for r in vt["results"]}
+assert by["start, 60 s"]["ok"] and by["start, 60 s"]["duration_s"] == 60
+mid = [r for r in vt["results"] if r["variant"].endswith("in, 60 s") and r["offsetTimeMs"] > 200000][0]
+assert mid["ok"] is False and mid["duration_s"] == 1.0 and mid["padding_bytes"] == 20000, mid
+assert [r for r in vt["results"] if "slutpunkt" in r["variant"]][0]["ok"] is True
+assert by["hela filen (början)"]["offsetTimeMs"] is None and OPENS[-1] == (None, None)
+assert not [f for f in os.listdir(main.REC_CACHE_DIR) if f.startswith("test_")]
+assert run(main.overview_raw(R))["recording_variants"]["recording"] == 20
+recs.pop()
+print("D3 short parts, playTimeMs mode and fetch test OK")
+
 # ---- Overview settings: validated, saved, exported
 run(main.put_settings(R, {"overview": {"sound": 0, "debug": "yes", "junk": 1}}))
 assert config.get("overview") == {"sound": False, "debug": True}, config.get("overview")

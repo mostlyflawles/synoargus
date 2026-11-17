@@ -13,6 +13,8 @@ Object.assign(EN, {
   'Lägg till en kamera under Inställningar > Kameror först.': 'Add a camera under Settings > Cameras first.',
   '1 kamera': '1 camera', 'Bild från händelsen – ingen inspelning': 'Image from the event – no recording',
   'Uppspelningen fastnade. Tryck ▶ för att försöka igen.': 'Playback got stuck. Press ▶ to try again.',
+  'Surveillance Station skickade bara {n} s av inspelningen. Tryck ▶ för att försöka igen.': 'Surveillance Station only sent {n} s of the recording. Press ▶ to try again.',
+  'Testa hämtning från Surveillance Station': 'Test fetching from Surveillance Station', 'Testar… (kan ta en minut)': 'Testing… (may take a minute)',
   'Hjälp': 'Help', 'Gå till': 'Go to', 'Avbryt': 'Cancel', 'Välj datum och tid': 'Choose date and time',
   'Zooma in': 'Zoom in', 'Zooma ut': 'Zoom out', 'Återställ zoom': 'Reset zoom',
   'Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.': 'Tap a camera for full screen. Drag the timeline to play recordings. Tap the date and time to choose a point in time.',
@@ -92,6 +94,13 @@ class RecPlayer {
       return again(T0, (this.retry || 0) + 1);
     }
     const r1 = t_ => Math.round(t_ * 10) / 10;
+    // biten var mycket kortare än den borde (Surveillance Station skickade bara början): hämta inte om sekund för sekund
+    const age = Date.now() / 1000 - T0;
+    const expected = this.ongoing ? (age > REC_CHUNK + 15 ? REC_CHUNK : 0) : Math.min(REC_CHUNK, this.stop_ - T0);
+    if (expected >= 10 && isFinite(v.duration) && v.duration < expected * 0.5) {
+      clearInterval(this.watch); this.isStuck = true;
+      return this.msg(t('Surveillance Station skickade bara {n} s av inspelningen. Tryck ▶ för att försöka igen.', { n: Math.round(v.duration * 10) / 10 }));
+    }
     if (at < this.stop_ - 1) return this.play(r1(at));          // bara biten tog slut
     if (this.next) return this.play(this.next);                  // inspelningen är slut: nästa
     if (this.ongoing) return again(r1(at), 0);                   // pågår fortfarande: vänta på mer
@@ -262,7 +271,7 @@ async function renderOverview() {
       <div class="ov-tlwrap"><div class="ov-tl" id="ovTl"><div class="ov-track" id="ovTrack"></div></div><div class="ov-cursor"></div></div>
       <details class="more ov-help"><summary>${t('Hjälp')}</summary>
         <p class="small muted" style="margin:6px 0 0">${t('Tryck på en kamera för helskärm. Dra tidslinjen för att spela upp inspelningar. Tryck på datum och tid för att välja en tidpunkt.')}</p></details>
-      ${S.cfg?.overview?.debug ? `<p class="small" style="margin:6px 0 0"><a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a></p>` : ''}<pre class="raw" id="ovRawBox" hidden></pre>
+      ${S.cfg?.overview?.debug ? `<p class="small" style="margin:6px 0 0"><a href="#" id="ovRaw">${t('Visa rådata för felsökning')}</a> · <a href="#" id="ovRecTest">${t('Testa hämtning från Surveillance Station')}</a></p>` : ''}<pre class="raw" id="ovRawBox" hidden></pre>
     </div>
   </div>`;
 
@@ -413,6 +422,10 @@ async function renderOverview() {
     e.preventDefault(); const box = $('#ovRawBox'); box.hidden = !box.hidden; if (box.hidden) return;
     box.textContent = t('Laddar…');
     try { box.textContent = JSON.stringify(await api('/api/overview/raw'), null, 2); } catch (err) { box.textContent = err.message; }
+  };
+  if ($('#ovRecTest')) $('#ovRecTest').onclick = async e => {
+    e.preventDefault(); const box = $('#ovRawBox'); box.hidden = false; box.textContent = t('Testar… (kan ta en minut)');
+    try { box.textContent = JSON.stringify(await api('/api/overview/recording-test', { method: 'POST' }), null, 2); } catch (err) { box.textContent = err.message; }
   };
 
   // ---------------------------------------------------------------- helskärm med ljud

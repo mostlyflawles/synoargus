@@ -380,7 +380,9 @@ How it works:
 - Playback that stands still is reloaded automatically (three attempts, then *Playback got stuck* – ▶ tries again).
 - *Show raw data for troubleshooting* (turn it on under Settings > Other > Overview) shows what Surveillance Station
   returns (passwords and stream keys removed), the recordings of the last 24 hours and how they were read, a two-second
-  test playback and the latest playbacks.
+  test playback and the latest playbacks. *Test fetching from Surveillance Station* tries several ways of fetching a
+  part of a recording and shows how many seconds of video each one gave.
+- If Surveillance Station sends only the first second of a part, the tile says so instead of fetching second by second.
 - Each live tile is a stream from the NAS. Close the tab when you are not watching.
 
 ## 8. Control cameras via webhook

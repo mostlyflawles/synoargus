@@ -32,6 +32,7 @@ from .modes import ModeManager, SPECIAL as SPECIAL_MODES
 from .calibration import BusyError, CalibrationManager
 from . import calibration as calibration_mod
 from . import dispatch
+from . import mp4info
 from . import streams as streams_mod
 from . import watch as watch_mod
 from .synology import SurveillanceStation, SynologyError, dsm_login_check, find_md_params, find_rules
@@ -1112,7 +1113,7 @@ async def overview_recording(request: Request, cam: str, t: float, length: int =
                  "range": request.headers.get("range")}
     PLAYBACKS.append(log_entry)
     try:
-        path = await _rec_fetch(r["id"], offset, length, log_entry)
+        path = await _rec_fetch(r["id"], offset, length, log_entry, expected=min(length, max(0.0, r["stop"] - t)))
     except SynologyError as e:
         log_entry.update(status="error", error=str(e))
         raise HTTPException(502, str(e))
@@ -1156,37 +1157,106 @@ def _rec_cache_clean():
                 pass
         else:
             total += size
+    for p in [p for p in _REC_INFO if not os.path.exists(p)]:
+        _REC_INFO.pop(p, None)
 
 
-async def _rec_fetch(rec_id, offset, length, log_entry):
-    """Hämtar biten till en tillfällig fil (en gång, även om webbläsaren frågar flera gånger samtidigt)."""
+# Hur Surveillance Station tolkar playTimeMs. Den normala tolkningen är längd ("relative"). Visar det sig att en
+# bit mitt i en inspelning blir nästan tom, men blir hel när playTimeMs i stället är slutpunkten ("absolute"),
+# används det sättet sedan. "broken": ingen av tolkningarna gav en hel bit, så vi försöker inte igen.
+REC_MODE = {"mode": None}
+REC_TRY_CAP = 40e6              # byte: så mycket får en provhämtning med den andra tolkningen vara
+
+
+class _TooBig(Exception):
+    pass
+
+
+async def _download(rec_id, offset_ms, play_ms, path, log_entry=None, cap=None):
+    """Hämtar från Surveillance Station till path. Returnerar content-type."""
+    resp = await ss.open_recording(rec_id, offset_ms, play_ms)
+    ctype = resp.headers.get("content-type")
+    if log_entry is not None:
+        log_entry.update(status="fetching", content_type=ctype)
+    n = 0
+    try:
+        with open(path, "wb") as f:
+            async for chunk in resp.aiter_bytes():
+                f.write(chunk)
+                n += len(chunk)
+                if log_entry is not None:
+                    log_entry["bytes"] += len(chunk)
+                if cap and n > cap:
+                    raise _TooBig()
+    finally:
+        await resp.aclose()
+    return ctype
+
+
+async def _rec_fetch(rec_id, offset, length, log_entry, expected=None):
+    """Hämtar biten till en tillfällig fil (en gång, även om webbläsaren frågar flera gånger samtidigt).
+    Är biten mycket kortare än väntat (Surveillance Station skickade bara början och fyllde ut med nollor) provas
+    den andra tolkningen av playTimeMs en gång. Nollorna skärs alltid bort."""
     os.makedirs(REC_CACHE_DIR, exist_ok=True)
+    expected = length if expected is None else expected
     key = f"{int(rec_id)}_{int(round(offset * 10))}_{int(length)}"
     path = os.path.join(REC_CACHE_DIR, key + ".mp4")
     lock = _rec_locks.setdefault(key, asyncio.Lock())
     async with lock:
         if os.path.exists(path):
             os.utime(path)
+            info = _REC_INFO.get(path)
             log_entry.update(status="cached", bytes=os.path.getsize(path))
+            if info:
+                log_entry.update(duration_s=info.get("duration_s"), short=info.get("short", False))
             return path
         _rec_cache_clean()
-        resp = await ss.open_recording(rec_id, offset * 1000, length * 1000)
-        log_entry.update(status="fetching", content_type=resp.headers.get("content-type"))
+        absolute = REC_MODE["mode"] == "absolute"
+        play_ms = (offset + length) * 1000 if absolute else length * 1000
         tmp = path + ".part"
-        try:
-            with open(tmp, "wb") as f:
-                async for chunk in resp.aiter_bytes():
-                    f.write(chunk)
-                    log_entry["bytes"] += len(chunk)
-        finally:
-            await resp.aclose()
+        await _download(rec_id, offset * 1000, play_ms, tmp, log_entry)
         if not log_entry["bytes"]:
             os.remove(tmp)
             raise RuntimeError(tr("Ingen inspelning"))
+        info = mp4info.inspect(tmp)
+        short = mp4info.is_short(info, expected)
+        if short and offset >= 5 and REC_MODE["mode"] is None:
+            alt = path + ".alt"
+            try:
+                await _download(rec_id, offset * 1000, (offset + length) * 1000, alt, cap=REC_TRY_CAP)
+                ainfo = mp4info.inspect(alt)
+                if not mp4info.is_short(ainfo, expected):
+                    os.replace(alt, tmp)
+                    info, short = ainfo, False
+                    REC_MODE["mode"] = "absolute"
+                    log.info("Surveillance Station tolkar playTimeMs som slutpunkt – används från och med nu")
+                else:
+                    REC_MODE["mode"] = "broken"
+            except _TooBig:
+                REC_MODE["mode"] = "broken"
+            except Exception as e:
+                log.warning("Provhämtning av inspelning: %s", e)
+            finally:
+                if os.path.exists(alt):
+                    os.remove(alt)
+            if REC_MODE["mode"] == "broken":
+                log.warning("Surveillance Station skickar bara %s s av inspelningsbitar mitt i inspelningar",
+                            info.get("duration_s"))
+        elif not short and offset > length and info.get("duration_s") and REC_MODE["mode"] is None:
+            REC_MODE["mode"] = "relative"
+        trimmed = mp4info.trim(tmp, info)
         os.replace(tmp, path)
-        log_entry["status"] = "fetched"
+        info = {**info, "short": short}
+        _REC_INFO[path] = info
+        log_entry.update(status="fetched", duration_s=info.get("duration_s"), short=short,
+                         mode=REC_MODE["mode"] or "relative", bytes=os.path.getsize(path))
+        if trimmed:
+            log_entry["trimmed"] = trimmed
     _rec_locks.pop(key, None)
     return path
+
+
+_REC_INFO = {}
 
 
 def _range_response(path, range_header, headers, log_entry=None):
@@ -1213,6 +1283,82 @@ def _range_response(path, range_header, headers, log_entry=None):
     if log_entry is not None:
         log_entry["sent"] = log_entry.get("sent", 0) + len(data)
     return Response(data, status_code=status, headers=h, media_type="video/mp4")
+
+
+# ------------------------------------------------------------------ test av hämtningsvarianter (Rådata)
+REC_VARIANTS = {}       # senaste testet
+
+
+async def _variant(rec_id, label, offset_s, play_ms, expected, cap):
+    """Hämtar en variant till en tillfällig fil och beskriver vad som kom."""
+    os.makedirs(REC_CACHE_DIR, exist_ok=True)
+    path = os.path.join(REC_CACHE_DIR, f"test_{rec_id}_{abs(hash(label)) % 10**8}.part")
+    res = {"variant": label, "offsetTimeMs": None if offset_s is None else int(offset_s * 1000),
+           "playTimeMs": play_ms, "expected_s": expected}
+    t0 = time.time()
+    try:
+        try:
+            await _download(rec_id, None if offset_s is None else offset_s * 1000, play_ms, path, cap=cap)
+            res["stopped_early"] = False
+        except _TooBig:
+            res["stopped_early"] = True             # vi läste bara början
+        info = mp4info.inspect(path, partial=res["stopped_early"])
+        res.update(bytes=info["size"], video_bytes=info["mdat_bytes"], padding_bytes=info["trailing"],
+                   duration_s=info["duration_s"], index=info["moov_at"])
+        if info["duration_s"] is None:
+            res["ok"] = None if res["stopped_early"] else False
+        else:
+            res["ok"] = not mp4info.is_short(info, expected)
+    except Exception as e:
+        res.update(ok=False, error=safe_error(e))
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    res["ms"] = round((time.time() - t0) * 1000)
+    return res
+
+
+@app.post("/api/overview/recording-test")
+async def recording_test(request: Request, cam: str = ""):
+    """Provar olika sätt att hämta en bit mitt i en inspelning och visar hur lång video varje sätt gav."""
+    require(request)
+    ids = _cam_ids()
+    if cam:
+        ids = {k: v for k, v in ids.items() if v == cam}
+    if not ids:
+        raise err(404, "Ingen inspelning")
+    now = time.time()
+    try:
+        items, _ = await ss.recordings(list(ids), now - 24 * 3600, now, limit=100)
+    except SynologyError as e:
+        raise HTTPException(502, str(e))
+    done = [r for r in items if not (r.get("estimated") and r["stop"] >= now - 60)]
+    if not done:
+        raise err(404, "Ingen inspelning")
+    r = max(done, key=lambda x: x["stop"] - x["start"])
+    dur = r["stop"] - r["start"]
+    mid = round(max(0.0, min(dur / 2, dur - 70)), 1)
+    plan = [("start, 60 s", 0, 60000, 60),
+            ("10 s in, 60 s", 10, 60000, 60)]
+    if dur > 200:
+        plan.append(("120 s in, 60 s", 120, 60000, 60))
+    if mid > 130:
+        plan += [(f"{int(mid)} s in, 60 s", mid, 60000, 60),
+                 (f"{int(mid)} s in, playTimeMs = slutpunkt", mid, int((mid + 60) * 1000), 60),
+                 (f"{int(mid)} s in, 10 s", mid, 10000, 10),
+                 (f"{int(mid)} s in, utan playTimeMs", mid, None, 60)]
+    plan.append(("hela filen (början)", None, None, round(dur)))
+    results = []
+    for label, off, play, exp in plan:
+        cap = 8e6 if off is None else 60e6
+        results.append(await _variant(r["id"], label, off, play, exp, cap))
+    REC_VARIANTS.clear()
+    REC_VARIANTS.update({"at": _iso(now), "camera": ids.get(r["cam"]), "recording": r["id"],
+                         "recording_start": _iso(r["start"]), "recording_length_s": round(dur),
+                         "mode": REC_MODE["mode"] or "relative", "results": results})
+    return REC_VARIANTS
 
 
 @app.get("/api/overview/raw")
@@ -1244,6 +1390,7 @@ async def overview_raw(request: Request):
             rec_raw = {"error": str(e)}
     return {"live": streams.status(), "live_paths": json.loads(streams_mod.mask(json.dumps(streams.raw))),
             "recordings_parsed": parsed, "recording_test": play, "playbacks": list(PLAYBACKS)[::-1],
+            "playback_mode": REC_MODE["mode"] or "relative", "recording_variants": REC_VARIANTS or None,
             "recordings": json.loads(streams_mod.mask(json.dumps(_mask_rules(rec_raw))))}
 
 
